@@ -5,12 +5,13 @@ import { type GenerateClassroomInput } from '@/lib/server/classroom-generation';
 import { runClassroomGenerationJob } from '@/lib/server/classroom-job-runner';
 import { createClassroomGenerationJob } from '@/lib/server/classroom-job-store';
 import { buildRequestOrigin } from '@/lib/server/classroom-storage';
+import { createClient } from '@/lib/supabase/server';
 
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
   try {
-    const rawBody = (await req.json()) as Partial<GenerateClassroomInput>;
+    const rawBody = (JSON.parse(await req.text())) as Partial<GenerateClassroomInput>;
     const body: GenerateClassroomInput = {
       requirement: rawBody.requirement || '',
       ...(rawBody.pdfContent ? { pdfContent: rawBody.pdfContent } : {}),
@@ -31,12 +32,22 @@ export async function POST(req: NextRequest) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'Missing required field: requirement');
     }
 
+    // Extract user_id from session — optional, generation works without login
+    let userId: string | undefined;
+    try {
+      const supabase = await createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      userId = user?.id ?? undefined;
+    } catch {
+      // Not logged in or session invalid — proceed without userId
+    }
+
     const baseUrl = buildRequestOrigin(req);
     const jobId = nanoid(10);
     const job = await createClassroomGenerationJob(jobId, body);
     const pollUrl = `${baseUrl}/api/generate-classroom/${jobId}`;
 
-    after(() => runClassroomGenerationJob(jobId, body, baseUrl));
+    after(() => runClassroomGenerationJob(jobId, body, baseUrl, userId));
 
     return apiSuccess(
       {
