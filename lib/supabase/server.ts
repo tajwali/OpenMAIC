@@ -1,0 +1,46 @@
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+
+// Supabase self-hosted: nginx on port 8000 doesn't route /auth/v1 to GoTrue.
+// This fetch rewriter redirects auth calls directly to GoTrue on port 9999.
+function makeAuthFetch() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const authUrl = process.env.SUPABASE_AUTH_URL
+  if (!authUrl) return undefined
+
+  return (url: RequestInfo | URL, options?: RequestInit) => {
+    const urlStr = url.toString()
+    const authPrefix = supabaseUrl + '/auth/v1'
+    if (urlStr.startsWith(authPrefix)) {
+      const path = urlStr.slice(authPrefix.length)
+      return fetch(authUrl + path, options)
+    }
+    return fetch(url, options)
+  }
+}
+
+export async function createClient() {
+  const cookieStore = await cookies()
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      global: { fetch: makeAuthFetch() },
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {
+            // Server component — can be ignored
+          }
+        },
+      },
+    }
+  )
+}
