@@ -59,6 +59,8 @@ export function runClassroomGenerationJob(
 
       await markClassroomGenerationJobSucceeded(jobId, result);
 
+      log.info(`Job ${jobId} succeeded. userId=${userId ?? 'undefined'}, classroomId=${result.id}`);
+
       if (userId) {
         try {
           await saveClassroomToDatabase(

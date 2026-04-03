@@ -6,6 +6,9 @@ import { runClassroomGenerationJob } from '@/lib/server/classroom-job-runner';
 import { createClassroomGenerationJob } from '@/lib/server/classroom-job-store';
 import { buildRequestOrigin } from '@/lib/server/classroom-storage';
 import { createClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('GenerateClassroom');
 
 export const maxDuration = 30;
 
@@ -36,10 +39,17 @@ export async function POST(req: NextRequest) {
     let userId: string | undefined;
     try {
       const supabase = await createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      userId = user?.id ?? undefined;
-    } catch {
-      // Not logged in or session invalid — proceed without userId
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError) {
+        log.warn('auth.getUser error:', authError.message);
+      } else if (user) {
+        userId = user.id;
+        log.info('userId resolved:', userId);
+      } else {
+        log.warn('no user in session (not logged in)');
+      }
+    } catch (e) {
+      log.error('auth.getUser threw:', e instanceof Error ? e.message : String(e));
     }
 
     const baseUrl = buildRequestOrigin(req);
