@@ -14,7 +14,7 @@ function makeAuthFetch() {
   }
 }
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   // Allow all API routes through without auth
   if (request.nextUrl.pathname.startsWith('/api/')) {
     return NextResponse.next()

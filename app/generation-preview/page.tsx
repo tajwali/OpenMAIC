@@ -785,6 +785,19 @@ function GenerationPreviewContent() {
       );
 
       sessionStorage.removeItem('generationSession');
+
+      // Fire-and-forget: save to DB for logged-in users (never blocks navigation)
+      fetch('/api/user/classrooms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: stage.id,
+          title: stage.name,
+          topic: currentSession.requirements.requirement ?? '',
+          scenes: store.scenes,
+        }),
+      }).catch(() => {});
+
       await store.saveToStorage();
       router.push(`/classroom/${stage.id}`);
     } catch (err) {
