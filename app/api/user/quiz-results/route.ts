@@ -64,17 +64,41 @@ export async function GET() {
     }
 
     const admin = getSupabaseAdmin()
-    const { data, error } = await admin
+
+    // 1. Get quiz results (last 20)
+    const { data: quizRows, error } = await admin
       .from('quiz_results')
       .select('id, classroom_id, scene_id, score, total, percentage, taken_at')
       .eq('user_id', user.id)
       .order('taken_at', { ascending: false })
+      .limit(20)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json(data ?? [])
+    if (!quizRows || quizRows.length === 0) {
+      return NextResponse.json([])
+    }
+
+    // 2. Fetch classroom titles for the referenced classrooms
+    const classroomIds = [...new Set(quizRows.map(r => r.classroom_id).filter(Boolean))]
+    const { data: classroomRows } = await admin
+      .from('classrooms')
+      .select('id, title')
+      .in('id', classroomIds)
+
+    const titleMap = new Map<string, string>(
+      (classroomRows ?? []).map(c => [c.id, c.title] as [string, string])
+    )
+
+    // 3. Merge
+    const result = quizRows.map(r => ({
+      ...r,
+      classroom_title: titleMap.get(r.classroom_id) ?? null,
+    }))
+
+    return NextResponse.json(result)
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Internal error' },

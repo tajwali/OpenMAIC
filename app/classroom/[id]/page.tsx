@@ -114,6 +114,13 @@ export default function ClassroomDetailPage() {
 
     loadClassroom();
 
+    // Fire-and-forget: track that user accessed this classroom
+    fetch('/api/user/course-progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ classroom_id: classroomId }),
+    }).catch(() => {});
+
     // Cancel ongoing generation when classroomId changes or component unmounts
     return () => {
       stop();

@@ -24,9 +24,9 @@ export async function GET() {
     const coursesCompleted = progressRes.count ?? 0
     const quizRows = quizRes.data ?? []
     const quizzesTaken = quizRows.length
-    const avgScore = quizzesTaken > 0
-      ? quizRows.reduce((sum, r) => sum + (Number(r.percentage) || 0), 0) / quizzesTaken
-      : 0
+    const avgScore: number | null = quizzesTaken > 0
+      ? Math.round(quizRows.reduce((sum, r) => sum + (Number(r.percentage) || 0), 0) / quizzesTaken)
+      : null
 
     const role = profileRes.data?.role
 
@@ -52,7 +52,7 @@ export async function GET() {
     return NextResponse.json({
       totalCourses,
       quizzesTaken,
-      avgScore: Math.round(avgScore * 100) / 100,
+      avgScore,
       coursesCompleted,
       ...(studentCount !== undefined ? { studentCount } : {}),
       ...(totalUsers !== undefined ? { totalUsers } : {}),

@@ -15,8 +15,19 @@ interface AssignedClassroom {
 interface Stats {
   totalCourses: number
   quizzesTaken: number
-  avgScore: number
+  avgScore: number | null
   coursesCompleted: number
+}
+
+interface QuizResult {
+  id: string
+  classroom_id: string
+  classroom_title: string | null
+  scene_id: string
+  score: number
+  total: number
+  percentage: number
+  taken_at: string
 }
 
 interface Props {
@@ -27,16 +38,19 @@ interface Props {
 export default function SchoolStudentDashboard({ userEmail, displayName }: Props) {
   const router = useRouter()
   const [classrooms, setClassrooms] = useState<AssignedClassroom[]>([])
-  const [stats, setStats] = useState<Stats>({ totalCourses: 0, quizzesTaken: 0, avgScore: 0, coursesCompleted: 0 })
+  const [stats, setStats] = useState<Stats>({ totalCourses: 0, quizzesTaken: 0, avgScore: null, coursesCompleted: 0 })
+  const [quizHistory, setQuizHistory] = useState<QuizResult[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([
       fetch('/api/user/assigned-classrooms').then(r => r.ok ? r.json() : []),
       fetch('/api/user/stats').then(r => r.ok ? r.json() : null),
-    ]).then(([courses, userStats]: [unknown, Stats | null]) => {
+      fetch('/api/user/quiz-results').then(r => r.ok ? r.json() : []),
+    ]).then(([courses, userStats, quizzes]: [unknown, Stats | null, unknown]) => {
       setClassrooms(Array.isArray(courses) ? (courses as AssignedClassroom[]) : [])
-      setStats(userStats ?? { totalCourses: 0, quizzesTaken: 0, avgScore: 0, coursesCompleted: 0 })
+      setStats(userStats ?? { totalCourses: 0, quizzesTaken: 0, avgScore: null, coursesCompleted: 0 })
+      setQuizHistory(Array.isArray(quizzes) ? (quizzes as QuizResult[]).slice(0, 5) : [])
     }).finally(() => setLoading(false))
   }, [])
 
@@ -70,7 +84,11 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <StatCard icon={<BookOpen className="w-5 h-5 text-blue-500" />} label="Assigned Courses" value={stats.totalCourses} />
           <StatCard icon={<Trophy className="w-5 h-5 text-green-500" />} label="Completed" value={stats.coursesCompleted} />
-          <StatCard icon={<BarChart2 className="w-5 h-5 text-yellow-500" />} label="Avg Score" value={stats.quizzesTaken > 0 ? `${Math.round(stats.avgScore)}%` : '—'} />
+          <StatCard
+            icon={<BarChart2 className="w-5 h-5 text-yellow-500" />}
+            label="Avg Score"
+            value={stats.avgScore !== null ? `${stats.avgScore}%` : '--'}
+          />
         </div>
 
         {/* Course Grid */}
@@ -81,7 +99,7 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
               {[1, 2, 3].map(i => <div key={i} className="h-32 rounded-xl bg-muted animate-pulse" />)}
             </div>
           ) : classrooms.length === 0 ? (
-            <div className="text-center py-20 border-2 border-dashed border-border rounded-xl">
+            <div className="text-center py-16 border-2 border-dashed border-border rounded-xl">
               <BookOpen className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
               <p className="text-muted-foreground font-medium">No courses assigned yet — ask your teacher</p>
             </div>
@@ -109,8 +127,65 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
             </div>
           )}
         </section>
+
+        {/* Quiz History */}
+        <section>
+          <h2 className="text-lg font-semibold mb-4">Recent Quiz Results</h2>
+          {loading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map(i => <div key={i} className="h-12 rounded-lg bg-muted animate-pulse" />)}
+            </div>
+          ) : quizHistory.length === 0 ? (
+            <div className="text-center py-10 border-2 border-dashed border-border rounded-xl">
+              <p className="text-muted-foreground text-sm">No quizzes taken yet</p>
+            </div>
+          ) : (
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Course</th>
+                    <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Score</th>
+                    <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Result</th>
+                    <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {quizHistory.map(q => (
+                    <tr key={q.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3 max-w-[200px]">
+                        <p className="truncate text-foreground">{q.classroom_title ?? q.classroom_id}</p>
+                      </td>
+                      <td className="px-4 py-3 text-center text-muted-foreground">{q.score}/{q.total}</td>
+                      <td className="px-4 py-3 text-center">
+                        <ScoreBadge pct={q.percentage} />
+                      </td>
+                      <td className="px-4 py-3 text-right text-muted-foreground text-xs">
+                        {new Date(q.taken_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       </main>
     </div>
+  )
+}
+
+function ScoreBadge({ pct }: { pct: number }) {
+  const rounded = Math.round(pct)
+  const color = rounded >= 80
+    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+    : rounded >= 60
+      ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
+      : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${color}`}>
+      {rounded}%
+    </span>
   )
 }
 
