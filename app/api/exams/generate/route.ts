@@ -9,12 +9,33 @@ function extractSceneText(scenes: unknown[]): string {
     .map((scene: unknown) => {
       const s = scene as Record<string, unknown>
       const parts: string[] = [`Scene: ${s.title ?? 'Untitled'}`]
+
+      // Primary source: actions array carries narration/speech/whiteboard text
+      // Speech actions (type='speech') have action.text with full narration
+      // Discussion actions have action.topic and action.prompt
+      // Whiteboard text actions (type='wb_draw_text') have action.content
+      if (Array.isArray(s.actions)) {
+        for (const rawA of s.actions as unknown[]) {
+          const a = rawA as Record<string, unknown>
+          if (a.type === 'speech' && a.text) {
+            parts.push(String(a.text).trim())
+          } else if (a.type === 'discussion') {
+            if (a.topic) parts.push(`Discussion: ${String(a.topic).trim()}`)
+            if (a.prompt) parts.push(String(a.prompt).trim())
+          } else if (a.type === 'wb_draw_text' && a.content) {
+            const wbText = String(a.content).replace(/<[^>]+>/g, '').trim()
+            if (wbText) parts.push(wbText)
+          }
+        }
+      }
+
+      // Secondary: quiz scene questions (content.type === 'quiz')
       const content = s.content as Record<string, unknown> | undefined
       if (content?.type === 'quiz') {
         const questions = (content.questions as unknown[]) ?? []
         for (const rawQ of questions) {
           const q = rawQ as Record<string, unknown>
-          parts.push(`Q: ${q.question}`)
+          if (q.question) parts.push(`Q: ${q.question}`)
           if (Array.isArray(q.options)) {
             for (const rawO of q.options) {
               const o = rawO as Record<string, string>
@@ -24,21 +45,11 @@ function extractSceneText(scenes: unknown[]): string {
           if (Array.isArray(q.answer)) parts.push(`Answer: ${q.answer.join(', ')}`)
           if (q.analysis) parts.push(`Explanation: ${q.analysis}`)
         }
-      } else if (content?.type === 'slide') {
-        const canvas = content.canvas as Record<string, unknown> | undefined
-        if (Array.isArray(canvas?.elements)) {
-          for (const rawEl of canvas.elements as unknown[]) {
-            const el = rawEl as Record<string, unknown>
-            if (el.type === 'text') {
-              const raw = String(el.content ?? '')
-              const text = raw.replace(/<[^>]+>/g, '').trim()
-              if (text) parts.push(text.slice(0, 200))
-            }
-          }
-        }
       }
+
       return parts.join('\n')
     })
+    .filter(block => block.trim().length > 0)
     .join('\n\n')
 }
 
@@ -79,6 +90,14 @@ export async function POST(req: NextRequest) {
 
     const allScenes: unknown[] = classrooms.flatMap(c => (c.scenes as unknown[]) ?? [])
     const courseContext = extractSceneText(allScenes)
+
+    if (courseContext.trim().length < 100) {
+      return NextResponse.json(
+        { error: 'No course content found. Please open and complete a course first so its content is saved.' },
+        { status: 400 },
+      )
+    }
+
     const courseTitles = classrooms.map(c => c.title as string).join(', ')
     const examTitle = title || `Exam: ${courseTitles}`
 
