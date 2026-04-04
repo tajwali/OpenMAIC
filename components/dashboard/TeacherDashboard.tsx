@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Users, BookOpen, ClipboardList, LogOut, Copy, Check, RefreshCw, X, ChevronRight } from 'lucide-react'
+import { Users, BookOpen, ClipboardList, LogOut, Copy, Check, RefreshCw, X, ChevronRight, FileText } from 'lucide-react'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -273,12 +273,21 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
           <div className="space-y-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">My Courses</h2>
-              <button
-                onClick={() => router.push('/generate')}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
-              >
-                + Generate New Course
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => router.push('/exam/create')}
+                  className="flex items-center gap-1.5 px-3 py-2 border border-border text-foreground rounded-lg text-sm font-medium hover:bg-muted transition-colors"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  Create Exam
+                </button>
+                <button
+                  onClick={() => router.push('/generate')}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+                >
+                  + Generate New Course
+                </button>
+              </div>
             </div>
             {loading ? (
               <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-20 rounded-xl bg-muted animate-pulse" />)}</div>

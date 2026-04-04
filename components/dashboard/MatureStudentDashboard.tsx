@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { BookOpen, Plus, Trophy, BarChart2, LogOut } from 'lucide-react'
+import { BookOpen, Plus, Trophy, BarChart2, LogOut, FileText, CheckCircle } from 'lucide-react'
 
 interface Classroom {
   id: string
@@ -30,6 +30,16 @@ interface QuizResult {
   taken_at: string
 }
 
+interface Exam {
+  id: string
+  title: string
+  time_limit_minutes: number
+  difficulty: string
+  question_count: number
+  created_at: string
+  attempted: boolean
+}
+
 interface Props {
   userEmail?: string
   displayName?: string
@@ -40,6 +50,7 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
   const [stats, setStats] = useState<Stats>({ totalCourses: 0, quizzesTaken: 0, avgScore: null, coursesCompleted: 0 })
   const [quizHistory, setQuizHistory] = useState<QuizResult[]>([])
+  const [exams, setExams] = useState<Exam[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -47,10 +58,12 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
       fetch('/api/user/classrooms').then(r => r.ok ? r.json() : []),
       fetch('/api/user/stats').then(r => r.ok ? r.json() : null),
       fetch('/api/user/quiz-results').then(r => r.ok ? r.json() : []),
-    ]).then(([courses, userStats, quizzes]: [unknown, Stats | null, unknown]) => {
+      fetch('/api/exams').then(r => r.ok ? r.json() : []),
+    ]).then(([courses, userStats, quizzes, examList]: [unknown, Stats | null, unknown, unknown]) => {
       setClassrooms(Array.isArray(courses) ? (courses as Classroom[]) : [])
       setStats(userStats ?? { totalCourses: 0, quizzesTaken: 0, avgScore: null, coursesCompleted: 0 })
       setQuizHistory(Array.isArray(quizzes) ? (quizzes as QuizResult[]).slice(0, 5) : [])
+      setExams(Array.isArray(examList) ? (examList as Exam[]) : [])
     }).finally(() => setLoading(false))
   }, [])
 
@@ -70,6 +83,13 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
             <p className="text-sm text-muted-foreground">{displayName ?? userEmail ?? 'My Dashboard'}</p>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push('/exam/create')}
+              className="flex items-center gap-2 px-4 py-2 border border-border text-foreground rounded-lg text-sm font-medium hover:bg-muted transition-colors"
+            >
+              <FileText className="w-4 h-4" />
+              Create Exam
+            </button>
             <button
               onClick={() => router.push('/generate')}
               className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
@@ -125,6 +145,49 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {classrooms.map(c => (
                 <CourseCard key={c.id} classroom={c} onClick={() => router.push(`/classroom/${c.id}`)} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Exams */}
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">My Exams</h2>
+            <button
+              onClick={() => router.push('/exam/create')}
+              className="flex items-center gap-1 text-sm text-primary hover:underline"
+            >
+              <Plus className="w-3.5 h-3.5" /> Create Exam
+            </button>
+          </div>
+          {loading ? (
+            <div className="space-y-2">
+              {[1, 2].map(i => <div key={i} className="h-14 rounded-lg bg-muted animate-pulse" />)}
+            </div>
+          ) : exams.length === 0 ? (
+            <div className="text-center py-10 border-2 border-dashed border-border rounded-xl">
+              <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+              <p className="text-muted-foreground text-sm">No exams yet — create one from your courses</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {exams.map(e => (
+                <button
+                  key={e.id}
+                  onClick={() => router.push(`/exam/${e.id}`)}
+                  className="text-left bg-card border border-border rounded-xl p-4 hover:border-primary/50 hover:shadow-md transition-all"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-medium text-sm text-foreground line-clamp-2">{e.title}</p>
+                    {e.attempted && <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />}
+                  </div>
+                  <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                    <span>{e.question_count} questions</span>
+                    <span>{e.time_limit_minutes} min</span>
+                    <span className="capitalize">{e.difficulty}</span>
+                  </div>
+                </button>
               ))}
             </div>
           )}
