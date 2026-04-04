@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { getCurrentModelConfig } from '@/lib/utils/model-config';
 import { createLogger } from '@/lib/logger';
+import { useStageStore } from '@/lib/store';
 
 const log = createLogger('QuizView');
 import type { QuizQuestion } from '@/lib/types/stage';
@@ -767,14 +768,31 @@ export function QuizView({ questions, sceneId }: QuizViewProps) {
       const ordered = questions.map((q) => allResultsMap.get(q.id)!).filter(Boolean);
 
       setResults(ordered);
-
       setPhase('reviewing');
+
+      // Fire-and-forget: save quiz result to DB for logged-in users
+      const classroomId = useStageStore.getState().stage?.id;
+      if (classroomId) {
+        const score = ordered.reduce((sum, r) => sum + r.earned, 0);
+        const total = questions.reduce((sum, q) => sum + (q.points ?? 1), 0);
+        fetch('/api/user/quiz-results', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            classroom_id: classroomId,
+            scene_id: sceneId,
+            score,
+            total,
+            answers: Object.entries(answers).map(([questionId, answer]) => ({ questionId, answer })),
+          }),
+        }).catch(() => {});
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [phase, questions, answers, locale]);
+  }, [phase, questions, answers, locale, sceneId]);
 
   const handleRetry = useCallback(() => {
     setPhase('not_started');
