@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { getSupabaseAdmin } from '@/lib/server/supabase-admin'
 
 function makeAuthFetch() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -16,7 +17,15 @@ function makeAuthFetch() {
 }
 
 export async function POST(request: Request) {
-  const { email, password, displayName } = JSON.parse(await request.text())
+  const body = JSON.parse(await request.text()) as {
+    email?: string
+    password?: string
+    displayName?: string
+    role?: string
+    inviteCode?: string
+  }
+
+  const { email, password, displayName, role = 'mature_student', inviteCode } = body
   const cookieStore = await cookies()
 
   const supabase = createServerClient(
@@ -35,22 +44,44 @@ export async function POST(request: Request) {
     }
   )
 
-  const { data, error } = await supabase.auth.signUp({ email, password })
+  // Validate role
+  const validRoles = ['mature_student', 'school_student']
+  const finalRole = validRoles.includes(role) ? role : 'mature_student'
+
+  // If school_student, validate invite code and find teacher
+  let teacherId: string | null = null
+  if (finalRole === 'school_student') {
+    if (!inviteCode?.trim()) {
+      return NextResponse.json({ error: 'Invite code is required for school students' }, { status: 400 })
+    }
+    const admin = getSupabaseAdmin()
+    const { data: teacher } = await admin
+      .from('user_profiles')
+      .select('id')
+      .eq('invite_code', inviteCode.trim())
+      .eq('role', 'teacher')
+      .single()
+
+    if (!teacher) {
+      return NextResponse.json({ error: 'Invalid invite code' }, { status: 400 })
+    }
+    teacherId = teacher.id
+  }
+
+  const { data, error } = await supabase.auth.signUp({ email: email!, password: password! })
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 })
   }
 
   if (data.user) {
-    try {
-      await supabase.from('user_profiles').insert({
-        id: data.user.id,
-        display_name: displayName,
-        role: 'student',
-      })
-    } catch {
-      // Will be created on first login
-    }
+    const admin = getSupabaseAdmin()
+    await admin.from('user_profiles').insert({
+      id: data.user.id,
+      display_name: displayName ?? '',
+      role: finalRole,
+      ...(teacherId ? { teacher_id: teacherId } : {}),
+    })
   }
 
   return NextResponse.json({ success: true, user: data.user })
