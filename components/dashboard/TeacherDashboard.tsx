@@ -66,16 +66,19 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
 
   const loadAll = useCallback(() => {
     setLoading(true)
+    const safeJson = (r: Response) => r.ok ? r.json().catch(() => null) : Promise.resolve(null)
     Promise.all([
-      fetch('/api/teacher/invite-code').then(r => r.ok ? r.json() : {}),
-      fetch('/api/teacher/students').then(r => r.ok ? r.json() : []),
-      fetch('/api/teacher/courses').then(r => r.ok ? r.json() : []),
-      fetch('/api/teacher/assign-course').then(r => r.ok ? r.json() : []),
-    ]).then(([ic, studs, crses, asns]: [{ invite_code?: string }, Student[], Course[], Assignment[]]) => {
-      setInviteCode(ic.invite_code ?? null)
-      setStudents(Array.isArray(studs) ? studs : [])
-      setCourses(Array.isArray(crses) ? crses : [])
-      setAssignments(Array.isArray(asns) ? asns : [])
+      fetch('/api/teacher/invite-code').then(safeJson).catch(() => null),
+      fetch('/api/teacher/students').then(safeJson).catch(() => null),
+      fetch('/api/teacher/courses').then(safeJson).catch(() => null),
+      fetch('/api/teacher/assign-course').then(safeJson).catch(() => null),
+    ]).then(([ic, studs, crses, asns]) => {
+      setInviteCode((ic as { invite_code?: string } | null)?.invite_code ?? null)
+      setStudents(Array.isArray(studs) ? (studs as Student[]) : [])
+      setCourses(Array.isArray(crses) ? (crses as Course[]) : [])
+      setAssignments(Array.isArray(asns) ? (asns as Assignment[]) : [])
+    }).catch(() => {
+      // Never let a fetch failure crash the dashboard
     }).finally(() => setLoading(false))
   }, [])
 

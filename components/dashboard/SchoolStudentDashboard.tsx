@@ -43,14 +43,17 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    const safeJson = (r: Response) => r.ok ? r.json().catch(() => null) : Promise.resolve(null)
     Promise.all([
-      fetch('/api/user/assigned-classrooms').then(r => r.ok ? r.json() : []),
-      fetch('/api/user/stats').then(r => r.ok ? r.json() : null),
-      fetch('/api/user/quiz-results').then(r => r.ok ? r.json() : []),
-    ]).then(([courses, userStats, quizzes]: [unknown, Stats | null, unknown]) => {
+      fetch('/api/user/assigned-classrooms').then(safeJson).catch(() => null),
+      fetch('/api/user/stats').then(safeJson).catch(() => null),
+      fetch('/api/user/quiz-results').then(safeJson).catch(() => null),
+    ]).then(([courses, userStats, quizzes]) => {
       setClassrooms(Array.isArray(courses) ? (courses as AssignedClassroom[]) : [])
-      setStats(userStats ?? { totalCourses: 0, quizzesTaken: 0, avgScore: null, coursesCompleted: 0 })
+      setStats((userStats as Stats | null) ?? { totalCourses: 0, quizzesTaken: 0, avgScore: null, coursesCompleted: 0 })
       setQuizHistory(Array.isArray(quizzes) ? (quizzes as QuizResult[]).slice(0, 5) : [])
+    }).catch(() => {
+      // Never let a fetch failure crash the dashboard
     }).finally(() => setLoading(false))
   }, [])
 

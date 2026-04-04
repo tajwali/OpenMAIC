@@ -54,16 +54,19 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    const safeJson = (r: Response) => r.ok ? r.json().catch(() => null) : Promise.resolve(null)
     Promise.all([
-      fetch('/api/user/classrooms').then(r => r.ok ? r.json() : []),
-      fetch('/api/user/stats').then(r => r.ok ? r.json() : null),
-      fetch('/api/user/quiz-results').then(r => r.ok ? r.json() : []),
-      fetch('/api/exams').then(r => r.ok ? r.json() : []),
-    ]).then(([courses, userStats, quizzes, examList]: [unknown, Stats | null, unknown, unknown]) => {
+      fetch('/api/user/classrooms').then(safeJson).catch(() => null),
+      fetch('/api/user/stats').then(safeJson).catch(() => null),
+      fetch('/api/user/quiz-results').then(safeJson).catch(() => null),
+      fetch('/api/exams').then(safeJson).catch(() => null),
+    ]).then(([courses, userStats, quizzes, examList]) => {
       setClassrooms(Array.isArray(courses) ? (courses as Classroom[]) : [])
-      setStats(userStats ?? { totalCourses: 0, quizzesTaken: 0, avgScore: null, coursesCompleted: 0 })
+      setStats((userStats as Stats | null) ?? { totalCourses: 0, quizzesTaken: 0, avgScore: null, coursesCompleted: 0 })
       setQuizHistory(Array.isArray(quizzes) ? (quizzes as QuizResult[]).slice(0, 5) : [])
       setExams(Array.isArray(examList) ? (examList as Exam[]) : [])
+    }).catch(() => {
+      // Never let a fetch failure crash the dashboard
     }).finally(() => setLoading(false))
   }, [])
 
