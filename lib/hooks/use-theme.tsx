@@ -40,13 +40,21 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [resolvedTheme]);
 
   // Listen to system theme changes
+  // Use addListener/removeListener fallback for Safari < 14 which lacks
+  // MediaQueryList.addEventListener (throws TypeError, crashes error boundary)
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = () => {
       setSystemTheme(mediaQuery.matches ? 'dark' : 'light');
     };
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    } else {
+      // Safari < 14 fallback
+      mediaQuery.addListener(handleChange);
+      return () => mediaQuery.removeListener(handleChange);
+    }
   }, []);
 
   // Save theme to localStorage
