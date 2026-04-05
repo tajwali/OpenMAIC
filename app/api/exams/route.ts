@@ -21,12 +21,23 @@ export async function GET() {
     const { data: results } = examIds.length
       ? await admin
           .from('exam_results')
-          .select('exam_id')
+          .select('exam_id, score, total_questions, percentage, submitted_at')
           .in('exam_id', examIds)
           .eq('student_id', user.id)
+          .order('submitted_at', { ascending: false })
       : { data: [] }
 
-    const attemptedSet = new Set((results ?? []).map(r => r.exam_id as string))
+    // Keep only the most recent result per exam
+    const resultMap = new Map<string, { score: number; total_questions: number; percentage: number }>()
+    for (const r of results ?? []) {
+      if (!resultMap.has(r.exam_id as string)) {
+        resultMap.set(r.exam_id as string, {
+          score: r.score as number,
+          total_questions: r.total_questions as number,
+          percentage: r.percentage as number,
+        })
+      }
+    }
 
     return NextResponse.json(
       (data ?? []).map(e => ({
@@ -37,7 +48,8 @@ export async function GET() {
         created_at: e.created_at,
         source_classroom_ids: e.source_classroom_ids,
         question_count: Array.isArray(e.questions) ? e.questions.length : 0,
-        attempted: attemptedSet.has(e.id as string),
+        attempted: resultMap.has(e.id as string),
+        result: resultMap.get(e.id as string) ?? null,
       })),
     )
   } catch (err) {

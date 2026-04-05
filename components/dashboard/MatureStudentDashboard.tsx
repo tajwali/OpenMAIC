@@ -7,9 +7,13 @@ import { BookOpen, Plus, Trophy, BarChart2, LogOut, FileText, CheckCircle } from
 interface Classroom {
   id: string
   title: string
+  short_title: string | null
   topic: string
   status: string
   created_at: string
+  subject_id: string | null
+  subject_name: string | null
+  subject_icon: string | null
 }
 
 interface Stats {
@@ -30,6 +34,12 @@ interface QuizResult {
   taken_at: string
 }
 
+interface ExamResult {
+  score: number
+  total_questions: number
+  percentage: number
+}
+
 interface Exam {
   id: string
   title: string
@@ -38,6 +48,7 @@ interface Exam {
   question_count: number
   created_at: string
   attempted: boolean
+  result: ExamResult | null
 }
 
 interface Props {
@@ -76,6 +87,21 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
     router.refresh()
   }
 
+  // Group classrooms by subject
+  const grouped: { label: string; icon: string; courses: Classroom[] }[] = []
+  const seen = new Set<string>()
+  for (const c of classrooms) {
+    const key = c.subject_id ?? '__none__'
+    if (!seen.has(key)) {
+      seen.add(key)
+      grouped.push({
+        label: c.subject_name ?? 'Other',
+        icon: c.subject_icon ?? '📚',
+        courses: classrooms.filter(x => (x.subject_id ?? '__none__') === key),
+      })
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -98,7 +124,7 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
               className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
             >
               <Plus className="w-4 h-4" />
-              Generate New Course
+              New Course
             </button>
             <button
               onClick={handleLogout}
@@ -124,7 +150,7 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
           <StatCard icon={<BookOpen className="w-5 h-5 text-purple-500" />} label="Completed" value={stats.coursesCompleted} />
         </div>
 
-        {/* Course Grid */}
+        {/* Courses grouped by subject */}
         <section>
           <h2 className="text-lg font-semibold mb-4">My Courses</h2>
           {loading ? (
@@ -145,9 +171,20 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {classrooms.map(c => (
-                <CourseCard key={c.id} classroom={c} onClick={() => router.push(`/classroom/${c.id}`)} />
+            <div className="space-y-6">
+              {grouped.map(group => (
+                <div key={group.label}>
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                    <span>{group.icon}</span>
+                    <span>{group.label}</span>
+                    <span className="ml-1 text-xs font-normal normal-case">({group.courses.length})</span>
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {group.courses.map(c => (
+                      <CourseCard key={c.id} classroom={c} onClick={() => router.push(`/classroom/${c.id}`)} />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -189,6 +226,9 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
                     <span>{e.question_count} questions</span>
                     <span>{e.time_limit_minutes} min</span>
                     <span className="capitalize">{e.difficulty}</span>
+                    {e.result && (
+                      <ScoreBadge pct={e.result.percentage} label={`${e.result.score}/${e.result.total_questions}`} />
+                    )}
                   </div>
                 </button>
               ))}
@@ -243,7 +283,7 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
   )
 }
 
-function ScoreBadge({ pct }: { pct: number }) {
+function ScoreBadge({ pct, label }: { pct: number; label?: string }) {
   const rounded = Math.round(pct)
   const color = rounded >= 80
     ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
@@ -252,7 +292,7 @@ function ScoreBadge({ pct }: { pct: number }) {
       : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
   return (
     <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${color}`}>
-      {rounded}%
+      {label ?? `${rounded}%`}
     </span>
   )
 }
@@ -271,6 +311,7 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
 
 function CourseCard({ classroom, onClick }: { classroom: Classroom; onClick: () => void }) {
   const date = new Date(classroom.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+  const displayTitle = classroom.short_title ?? classroom.title
   return (
     <button
       onClick={onClick}
@@ -283,8 +324,11 @@ function CourseCard({ classroom, onClick }: { classroom: Classroom; onClick: () 
         <span className="text-xs text-muted-foreground">{date}</span>
       </div>
       <p className="font-medium text-sm text-foreground group-hover:text-primary transition-colors line-clamp-3">
-        {classroom.title}
+        {displayTitle}
       </p>
+      {classroom.short_title && classroom.title !== classroom.short_title && (
+        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{classroom.title}</p>
+      )}
     </button>
   )
 }
