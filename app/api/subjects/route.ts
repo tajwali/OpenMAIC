@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { requireAuth, requireRole } from '@/lib/server/require-role'
 import { getSupabaseAdmin } from '@/lib/server/supabase-admin'
 
 export async function GET() {
   try {
-    const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await requireAuth()
+    if ('error' in auth) return auth.error
 
     const admin = getSupabaseAdmin()
     const { data, error } = await admin
@@ -24,30 +23,20 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const admin = getSupabaseAdmin()
-    const { data: profile } = await admin
-      .from('user_profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (!profile || !['admin', 'teacher'].includes(profile.role as string)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    const auth = await requireRole(['admin', 'teacher'])
+    if ('error' in auth) return auth.error
 
     const body = JSON.parse(await req.text()) as { name?: string; icon?: string; description?: string }
     if (!body.name?.trim()) return NextResponse.json({ error: 'name is required' }, { status: 400 })
+
+    const admin = getSupabaseAdmin()
     const { data, error } = await admin
       .from('subjects')
       .insert({
         name: body.name.trim(),
         icon: body.icon ?? '📚',
         description: body.description ?? null,
-        created_by: user.id,
+        created_by: auth.user.id,
         is_default: false,
       })
       .select('id, name, icon, description, is_default')
@@ -62,23 +51,13 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const admin = getSupabaseAdmin()
-    const { data: profile } = await admin
-      .from('user_profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (profile?.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    const auth = await requireRole(['admin'])
+    if ('error' in auth) return auth.error
 
     const id = new URL(req.url).searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+
+    const admin = getSupabaseAdmin()
     const { data: subject } = await admin
       .from('subjects')
       .select('is_default')

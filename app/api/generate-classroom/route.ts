@@ -1,4 +1,5 @@
 import { after, type NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { type GenerateClassroomInput } from '@/lib/server/classroom-generation';
@@ -6,6 +7,7 @@ import { runClassroomGenerationJob } from '@/lib/server/classroom-job-runner';
 import { createClassroomGenerationJob } from '@/lib/server/classroom-job-store';
 import { buildRequestOrigin } from '@/lib/server/classroom-storage';
 import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/server/supabase-admin';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('GenerateClassroom');
@@ -43,6 +45,15 @@ export async function POST(req: NextRequest) {
       if (authError) {
         log.warn('auth.getUser error:', authError.message);
       } else if (user) {
+        const adminClient = getSupabaseAdmin();
+        const { data: profile } = await adminClient
+          .from('user_profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+        if (profile?.role === 'school_student') {
+          return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
         userId = user.id;
         log.info('userId resolved:', userId);
       } else {

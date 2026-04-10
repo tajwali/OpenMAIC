@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/server/supabase-admin'
+import { checkRateLimit } from '@/lib/server/rate-limit'
 
 function makeAuthFetch() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -17,6 +18,15 @@ function makeAuthFetch() {
 }
 
 export async function POST(request: Request) {
+  const ip = request.headers.get('x-forwarded-for') ?? 'unknown'
+  const rateCheck = checkRateLimit(`signup:${ip}`, 5, 60 * 60 * 1000)
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: `Too many attempts. Please try again in ${rateCheck.retryAfter} seconds.` },
+      { status: 429 }
+    )
+  }
+
   const body = JSON.parse(await request.text()) as {
     email?: string
     password?: string

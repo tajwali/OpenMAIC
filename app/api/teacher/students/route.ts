@@ -1,29 +1,19 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { requireRole } from '@/lib/server/require-role'
 import { getSupabaseAdmin } from '@/lib/server/supabase-admin'
 
 export async function GET() {
   try {
-    const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await requireRole(['teacher', 'admin'])
+    if ('error' in auth) return auth.error
 
     const admin = getSupabaseAdmin()
-    const { data: profile } = await admin
-      .from('user_profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (profile?.role !== 'teacher' && profile?.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
 
     // Get all students under this teacher
     const { data: students } = await admin
       .from('user_profiles')
       .select('id, display_name, grade, school')
-      .eq('teacher_id', user.id)
+      .eq('teacher_id', auth.user.id)
 
     if (!students || students.length === 0) {
       return NextResponse.json([])
@@ -35,7 +25,7 @@ export async function GET() {
     const { data: assignments } = await admin
       .from('course_assignments')
       .select('assigned_to')
-      .eq('assigned_by', user.id)
+      .eq('assigned_by', auth.user.id)
       .in('assigned_to', studentIds)
 
     const assignmentCounts: Record<string, number> = {}

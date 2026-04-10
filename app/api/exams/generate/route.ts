@@ -59,6 +59,17 @@ export async function POST(req: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    const admin = getSupabaseAdmin()
+    const { data: profile } = await admin
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.role === 'school_student') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const body = JSON.parse(await req.text()) as {
       classroom_ids?: string[]
       num_questions?: number
@@ -75,17 +86,16 @@ export async function POST(req: NextRequest) {
     } = body
 
     if (!classroom_ids.length) {
-      return NextResponse.json({ error: 'No classroom_ids provided' }, { status: 400 })
+      return NextResponse.json({ error: 'Please select at least one course' }, { status: 400 })
     }
 
-    const admin = getSupabaseAdmin()
     const { data: classrooms } = await admin
       .from('classrooms')
       .select('id, title, scenes')
       .in('id', classroom_ids)
 
     if (!classrooms?.length) {
-      return NextResponse.json({ error: 'No valid classrooms found' }, { status: 404 })
+      return NextResponse.json({ error: 'No valid classrooms found' }, { status: 400 })
     }
 
     const allScenes: unknown[] = classrooms.flatMap(c => (c.scenes as unknown[]) ?? [])
