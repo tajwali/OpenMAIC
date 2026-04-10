@@ -28,8 +28,9 @@ export async function POST(req: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { data: profile } = await supabase
-      .from('profiles')
+    const admin = getSupabaseAdmin()
+    const { data: profile } = await admin
+      .from('user_profiles')
       .select('role')
       .eq('id', user.id)
       .single()
@@ -40,8 +41,6 @@ export async function POST(req: NextRequest) {
 
     const body = JSON.parse(await req.text()) as { name?: string; icon?: string; description?: string }
     if (!body.name?.trim()) return NextResponse.json({ error: 'name is required' }, { status: 400 })
-
-    const admin = getSupabaseAdmin()
     const { data, error } = await admin
       .from('subjects')
       .insert({
@@ -67,8 +66,9 @@ export async function DELETE(req: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { data: profile } = await supabase
-      .from('profiles')
+    const admin = getSupabaseAdmin()
+    const { data: profile } = await admin
+      .from('user_profiles')
       .select('role')
       .eq('id', user.id)
       .single()
@@ -79,8 +79,6 @@ export async function DELETE(req: NextRequest) {
 
     const id = new URL(req.url).searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
-
-    const admin = getSupabaseAdmin()
     const { data: subject } = await admin
       .from('subjects')
       .select('is_default')
