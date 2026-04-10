@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Shield, LogOut, Plus, X } from 'lucide-react'
+import { Shield, LogOut, Plus, X, Users, BookOpen, Trash2 } from 'lucide-react'
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface Subject {
   id: string
@@ -11,14 +13,53 @@ interface Subject {
   is_default: boolean
 }
 
+interface UserRecord {
+  id: string
+  email: string
+  display_name: string
+  role: string
+  teacher_id: string | null
+  grade: string | null
+  school: string | null
+}
+
+type Tab = 'users' | 'subjects'
+
+type UserRole = 'admin' | 'teacher' | 'school_student' | 'mature_student'
+
+const ROLE_BADGE: Record<string, string> = {
+  admin: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  teacher: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  mature_student: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  school_student: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+}
+
 interface Props {
   userEmail?: string
   displayName?: string
+  userId?: string
 }
 
-export default function AdminDashboard({ userEmail, displayName }: Props) {
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+export default function AdminDashboard({ userEmail, displayName, userId }: Props) {
   const router = useRouter()
+  const [tab, setTab] = useState<Tab>('users')
   const [userCount, setUserCount] = useState<number | null>(null)
+
+  // Users tab state
+  const [users, setUsers] = useState<UserRecord[]>([])
+  const [usersLoading, setUsersLoading] = useState(true)
+  const [usersError, setUsersError] = useState<string | null>(null)
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [createName, setCreateName] = useState('')
+  const [createEmail, setCreateEmail] = useState('')
+  const [createPassword, setCreatePassword] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  // Subjects tab state
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [subjectsLoading, setSubjectsLoading] = useState(true)
   const [newIcon, setNewIcon] = useState('📚')
@@ -32,6 +73,73 @@ export default function AdminDashboard({ userEmail, displayName }: Props) {
     }).catch(() => {})
   }, [])
 
+  // ─── Users ────────────────────────────────────────────────────────────────
+
+  const loadUsers = useCallback(() => {
+    setUsersLoading(true)
+    setUsersError(null)
+    fetch('/api/admin/users')
+      .then(r => r.ok ? r.json() : r.json().then((e: { error: string }) => { throw new Error(e.error) }))
+      .then((data: UserRecord[]) => setUsers(Array.isArray(data) ? data : []))
+      .catch((e: Error) => setUsersError(e.message))
+      .finally(() => setUsersLoading(false))
+  }, [])
+
+  useEffect(() => { loadUsers() }, [loadUsers])
+
+  const handleCreateTeacher = async () => {
+    if (!createName.trim() || !createEmail.trim() || !createPassword) return
+    setCreating(true)
+    setCreateError(null)
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: createEmail.trim(), password: createPassword, displayName: createName.trim() }),
+      })
+      const data = await res.json() as { error?: string }
+      if (!res.ok) { setCreateError(data.error ?? 'Failed'); return }
+      setShowCreateForm(false)
+      setCreateName(''); setCreateEmail(''); setCreatePassword('')
+      loadUsers()
+    } catch {
+      setCreateError('Network error')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleChangeRole = async (targetId: string, newRole: UserRole) => {
+    setActionError(null)
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: targetId, new_role: newRole }),
+      })
+      const data = await res.json() as { error?: string }
+      if (!res.ok) { setActionError(data.error ?? 'Failed to change role'); return }
+      loadUsers()
+    } catch {
+      setActionError('Network error')
+    }
+  }
+
+  const handleDeleteUser = async (targetId: string) => {
+    if (!confirm('Delete this user? This cannot be undone.')) return
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/admin/users?user_id=${targetId}`, { method: 'DELETE' })
+      const data = await res.json() as { error?: string }
+      if (!res.ok) { setActionError(data.error ?? 'Failed to delete user'); return }
+      loadUsers()
+    } catch {
+      setActionError('Network error')
+    }
+  }
+
+  // ─── Subjects ─────────────────────────────────────────────────────────────
+
   const loadSubjects = useCallback(() => {
     setSubjectsLoading(true)
     fetch('/api/subjects')
@@ -43,7 +151,7 @@ export default function AdminDashboard({ userEmail, displayName }: Props) {
 
   useEffect(() => { loadSubjects() }, [loadSubjects])
 
-  const handleAdd = async () => {
+  const handleAddSubject = async () => {
     if (!newName.trim()) return
     setAdding(true)
     setAddError(null)
@@ -57,8 +165,7 @@ export default function AdminDashboard({ userEmail, displayName }: Props) {
         const err = await res.json().catch(() => ({ error: 'Failed' })) as { error: string }
         setAddError(err.error ?? 'Failed to add subject')
       } else {
-        setNewName('')
-        setNewIcon('📚')
+        setNewName(''); setNewIcon('📚')
         loadSubjects()
       }
     } catch {
@@ -68,13 +175,11 @@ export default function AdminDashboard({ userEmail, displayName }: Props) {
     }
   }
 
-  const handleDelete = async (id: string) => {
+  const handleDeleteSubject = async (id: string) => {
     try {
       const res = await fetch(`/api/subjects?id=${id}`, { method: 'DELETE' })
       if (res.ok) loadSubjects()
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
   }
 
   const handleLogout = async () => {
@@ -83,10 +188,12 @@ export default function AdminDashboard({ userEmail, displayName }: Props) {
     router.refresh()
   }
 
+  // ─── Render ───────────────────────────────────────────────────────────────
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-foreground">OpenMAIC</h1>
             <p className="text-sm text-muted-foreground">{displayName ?? userEmail ?? 'Admin Dashboard'}</p>
@@ -97,7 +204,29 @@ export default function AdminDashboard({ userEmail, displayName }: Props) {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-8 space-y-8">
+      {/* Tabs */}
+      <div className="border-b border-border bg-card">
+        <div className="max-w-5xl mx-auto px-6 flex gap-1">
+          {([
+            { id: 'users', label: 'Users', icon: <Users className="w-4 h-4" /> },
+            { id: 'subjects', label: 'Subjects', icon: <BookOpen className="w-4 h-4" /> },
+          ] as { id: Tab; label: string; icon: React.ReactNode }[]).map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                tab === t.id
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t.icon}{t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
         {/* Admin header */}
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-xl">
@@ -113,77 +242,207 @@ export default function AdminDashboard({ userEmail, displayName }: Props) {
           </div>
         </div>
 
-        {/* Manage Subjects */}
-        <section className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border">
-            <h3 className="font-semibold text-foreground">Manage Subjects</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Default subjects cannot be deleted. Custom subjects can be added and removed.</p>
-          </div>
-
-          {/* Subject list */}
-          <div className="divide-y divide-border">
-            {subjectsLoading ? (
-              <div className="px-5 py-8 text-center">
-                <div className="inline-block w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : subjects.length === 0 ? (
-              <div className="px-5 py-6 text-center text-sm text-muted-foreground">No subjects found</div>
-            ) : (
-              subjects.map(s => (
-                <div key={s.id} className="flex items-center justify-between px-5 py-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg">{s.icon}</span>
-                    <span className="text-sm font-medium text-foreground">{s.name}</span>
-                    {s.is_default && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">default</span>
-                    )}
-                  </div>
-                  {!s.is_default && (
-                    <button
-                      onClick={() => handleDelete(s.id)}
-                      className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                      title="Delete subject"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Add subject form */}
-          <div className="px-5 py-4 border-t border-border bg-muted/30">
-            <p className="text-xs font-medium text-muted-foreground mb-3">Add Subject</p>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={newIcon}
-                onChange={e => setNewIcon(e.target.value)}
-                placeholder="📚"
-                className="w-14 text-center px-2 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                maxLength={4}
-              />
-              <input
-                type="text"
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
-                placeholder="Subject name"
-                className="flex-1 px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
+        {/* ── Users Tab ── */}
+        {tab === 'users' && (
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-foreground">All Users</h3>
               <button
-                onClick={handleAdd}
-                disabled={adding || !newName.trim()}
-                className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                onClick={() => { setShowCreateForm(v => !v); setCreateError(null) }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
               >
                 <Plus className="w-4 h-4" />
-                Add
+                Create Teacher
               </button>
             </div>
-            {addError && <p className="text-xs text-red-500 mt-2">{addError}</p>}
-          </div>
-        </section>
+
+            {/* Create teacher form */}
+            {showCreateForm && (
+              <div className="bg-card border border-border rounded-xl p-5 space-y-3">
+                <p className="text-sm font-medium text-foreground">New Teacher Account</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <input
+                    type="text"
+                    value={createName}
+                    onChange={e => setCreateName(e.target.value)}
+                    placeholder="Display name"
+                    className="px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                  <input
+                    type="email"
+                    value={createEmail}
+                    onChange={e => setCreateEmail(e.target.value)}
+                    placeholder="Email"
+                    className="px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                  <input
+                    type="password"
+                    value={createPassword}
+                    onChange={e => setCreatePassword(e.target.value)}
+                    placeholder="Password (min 6 chars)"
+                    className="px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                </div>
+                {createError && <p className="text-xs text-red-500">{createError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleCreateTeacher}
+                    disabled={creating || !createName.trim() || !createEmail.trim() || !createPassword}
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  >
+                    {creating ? 'Creating…' : 'Create'}
+                  </button>
+                  <button
+                    onClick={() => { setShowCreateForm(false); setCreateError(null) }}
+                    className="px-4 py-2 border border-border rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {actionError && (
+              <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-4 py-2">{actionError}</p>
+            )}
+
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              {usersLoading ? (
+                <div className="py-12 flex justify-center">
+                  <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : usersError ? (
+                <div className="py-8 text-center text-sm text-red-500">{usersError}</div>
+              ) : users.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">No users found</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/30">
+                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">Name</th>
+                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">Email</th>
+                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">Role</th>
+                      <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {users.map(u => {
+                      const isSelf = u.id === userId
+                      return (
+                        <tr key={u.id} className="hover:bg-muted/20 transition-colors">
+                          <td className="px-4 py-3 font-medium text-foreground">
+                            {u.display_name || <span className="text-muted-foreground italic">—</span>}
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">{u.email}</td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_BADGE[u.role] ?? 'bg-muted text-muted-foreground'}`}>
+                              {u.role}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-end gap-2">
+                              <select
+                                value={u.role}
+                                disabled={isSelf}
+                                onChange={e => handleChangeRole(u.id, e.target.value as UserRole)}
+                                className="text-xs px-2 py-1 border border-border rounded-lg bg-background text-foreground disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary/50"
+                              >
+                                <option value="admin">admin</option>
+                                <option value="teacher">teacher</option>
+                                <option value="mature_student">mature_student</option>
+                                <option value="school_student">school_student</option>
+                              </select>
+                              <button
+                                onClick={() => handleDeleteUser(u.id)}
+                                disabled={isSelf}
+                                className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                title={isSelf ? 'Cannot delete your own account' : 'Delete user'}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* ── Subjects Tab ── */}
+        {tab === 'subjects' && (
+          <section className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-border">
+              <h3 className="font-semibold text-foreground">Manage Subjects</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Default subjects cannot be deleted. Custom subjects can be added and removed.</p>
+            </div>
+
+            <div className="divide-y divide-border">
+              {subjectsLoading ? (
+                <div className="px-5 py-8 text-center">
+                  <div className="inline-block w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : subjects.length === 0 ? (
+                <div className="px-5 py-6 text-center text-sm text-muted-foreground">No subjects found</div>
+              ) : (
+                subjects.map(s => (
+                  <div key={s.id} className="flex items-center justify-between px-5 py-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">{s.icon}</span>
+                      <span className="text-sm font-medium text-foreground">{s.name}</span>
+                      {s.is_default && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">default</span>
+                      )}
+                    </div>
+                    {!s.is_default && (
+                      <button
+                        onClick={() => handleDeleteSubject(s.id)}
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        title="Delete subject"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="px-5 py-4 border-t border-border bg-muted/30">
+              <p className="text-xs font-medium text-muted-foreground mb-3">Add Subject</p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newIcon}
+                  onChange={e => setNewIcon(e.target.value)}
+                  placeholder="📚"
+                  className="w-14 text-center px-2 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  maxLength={4}
+                />
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAddSubject() }}
+                  placeholder="Subject name"
+                  className="flex-1 px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+                <button
+                  onClick={handleAddSubject}
+                  disabled={adding || !newName.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add
+                </button>
+              </div>
+              {addError && <p className="text-xs text-red-500 mt-2">{addError}</p>}
+            </div>
+          </section>
+        )}
       </main>
     </div>
   )

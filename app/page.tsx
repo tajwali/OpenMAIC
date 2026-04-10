@@ -23,7 +23,7 @@ export default async function Page() {
     case 'teacher':
       return <TeacherDashboard {...props} />
     case 'admin':
-      return <AdminDashboard {...props} />
+      return <AdminDashboard {...props} userId={user.id} />
     default:
       // mature_student or legacy 'student' role → generation dashboard
       return <MatureStudentDashboard {...props} />
