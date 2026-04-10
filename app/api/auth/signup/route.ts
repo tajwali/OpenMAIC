@@ -18,7 +18,9 @@ function makeAuthFetch() {
 }
 
 export async function POST(request: Request) {
-  const ip = request.headers.get('x-forwarded-for') ?? 'unknown'
+  const ip = request.headers.get('cf-connecting-ip')
+    ?? request.headers.get('x-forwarded-for')?.split(',')[0].trim()
+    ?? 'unknown'
   const rateCheck = checkRateLimit(`signup:${ip}`, 5, 60 * 60 * 1000)
   if (!rateCheck.allowed) {
     return NextResponse.json(

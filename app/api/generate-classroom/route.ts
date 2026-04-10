@@ -1,5 +1,4 @@
 import { after, type NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { type GenerateClassroomInput } from '@/lib/server/classroom-generation';
@@ -37,30 +36,26 @@ export async function POST(req: NextRequest) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'Missing required field: requirement');
     }
 
-    // Extract user_id from session — optional, generation works without login
+    // Auth and role check BEFORE job creation — not inside a swallowing try-catch
     let userId: string | undefined;
-    try {
-      const supabase = await createClient();
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError) {
-        log.warn('auth.getUser error:', authError.message);
-      } else if (user) {
-        const adminClient = getSupabaseAdmin();
-        const { data: profile } = await adminClient
-          .from('user_profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single();
-        if (profile?.role === 'school_student') {
-          return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-        }
-        userId = user.id;
-        log.info('userId resolved:', userId);
-      } else {
-        log.warn('no user in session (not logged in)');
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (user) {
+      const adminClient = getSupabaseAdmin();
+      const { data: profile } = await adminClient
+        .from('user_profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (profile?.role === 'school_student') {
+        return apiError('FORBIDDEN', 403, 'School students cannot generate courses');
       }
-    } catch (e) {
-      log.error('auth.getUser threw:', e instanceof Error ? e.message : String(e));
+      userId = user.id;
+      log.info('userId resolved:', userId);
+    } else {
+      log.warn('no user in session (not logged in)');
     }
 
     const baseUrl = buildRequestOrigin(req);

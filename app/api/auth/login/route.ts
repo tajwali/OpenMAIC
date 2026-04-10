@@ -18,16 +18,32 @@ function makeAuthFetch() {
 
 export async function POST(request: Request) {
   try {
-    const ip = request.headers.get('x-forwarded-for') ?? 'unknown'
-    const rateCheck = checkRateLimit(`login:${ip}`, 10, 15 * 60 * 1000)
-    if (!rateCheck.allowed) {
+    // CF-Connecting-IP is set by Cloudflare and cannot be spoofed by clients.
+    // Fall back to x-forwarded-for (first IP) when not behind Cloudflare.
+    const ip = request.headers.get('cf-connecting-ip')
+      ?? request.headers.get('x-forwarded-for')?.split(',')[0].trim()
+      ?? 'unknown'
+
+    const ipCheck = checkRateLimit(`login:${ip}`, 10, 15 * 60 * 1000)
+    if (!ipCheck.allowed) {
       return NextResponse.json(
-        { error: `Too many attempts. Please try again in ${rateCheck.retryAfter} seconds.` },
+        { error: `Too many attempts. Please try again in ${ipCheck.retryAfter} seconds.` },
         { status: 429 }
       )
     }
 
     const { email, password } = JSON.parse(await request.text())
+
+    // Per-email rate limit prevents targeted brute-force even if IP is spoofed
+    if (email) {
+      const emailCheck = checkRateLimit(`login:email:${email.toLowerCase()}`, 5, 15 * 60 * 1000)
+      if (!emailCheck.allowed) {
+        return NextResponse.json(
+          { error: `Too many attempts. Please try again in ${emailCheck.retryAfter} seconds.` },
+          { status: 429 }
+        )
+      }
+    }
     const cookieStore = await cookies()
 
     const supabase = createServerClient(
