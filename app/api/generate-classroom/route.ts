@@ -10,7 +10,6 @@ import { getSupabaseAdmin } from '@/lib/server/supabase-admin';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('GenerateClassroom');
-
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
@@ -30,32 +29,47 @@ export async function POST(req: NextRequest) {
       ...(rawBody.enableTTS != null ? { enableTTS: rawBody.enableTTS } : {}),
       ...(rawBody.agentMode ? { agentMode: rawBody.agentMode } : {}),
     };
-    const { requirement } = body;
 
+    const { requirement } = body;
     if (!requirement) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'Missing required field: requirement');
     }
 
-    // Auth and role check BEFORE job creation — not inside a swallowing try-catch
+    // Auth check - get user from session
     let userId: string | undefined;
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    log.info('Auth check - user:', user?.id ?? 'null', 'error:', authError?.message ?? 'none');
 
     if (user) {
+      // Always check role from user_profiles - never trust JWT claims
       const adminClient = getSupabaseAdmin();
-      const { data: profile } = await adminClient
+      const { data: profile, error: profileError } = await adminClient
         .from('user_profiles')
         .select('role')
         .eq('id', user.id)
         .single();
 
+      log.info('Profile check - role:', profile?.role ?? 'null', 'error:', profileError?.message ?? 'none');
+
+      // Block school_student explicitly
       if (profile?.role === 'school_student') {
+        log.warn('Blocked school_student from generating course:', user.id);
         return apiError('FORBIDDEN', 403, 'School students cannot generate courses');
       }
+
+      // If no profile found - fail safe, block the request
+      if (!profile) {
+        log.warn('No profile found for user:', user.id, '- blocking');
+        return apiError('FORBIDDEN', 403, 'Access denied');
+      }
+
       userId = user.id;
-      log.info('userId resolved:', userId);
+      log.info('userId resolved:', userId, 'role:', profile.role);
     } else {
-      log.warn('no user in session (not logged in)');
+      // No session - allow anonymous generation (existing behavior)
+      log.warn('No user in session - allowing anonymous generation');
     }
 
     const baseUrl = buildRequestOrigin(req);
@@ -76,12 +90,8 @@ export async function POST(req: NextRequest) {
       },
       202,
     );
-  } catch (error) {
-    return apiError(
-      'INTERNAL_ERROR',
-      500,
-      'Failed to create classroom generation job',
-      error instanceof Error ? error.message : 'Unknown error',
-    );
+  } catch (err) {
+    log.error('Error in generate-classroom:', err);
+    return apiError('INTERNAL_ERROR', 500, 'Internal server error');
   }
 }
