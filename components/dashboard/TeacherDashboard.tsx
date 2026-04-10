@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Users, BookOpen, ClipboardList, LogOut, Copy, Check, RefreshCw, X, ChevronRight, FileText } from 'lucide-react'
+import { Users, BookOpen, ClipboardList, LogOut, Copy, Check, RefreshCw, X, ChevronRight, FileText, BarChart2, ChevronDown } from 'lucide-react'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -40,7 +40,21 @@ interface StudentProgress {
   recentQuizzes: { classroom_title: string; score: number; total: number; percentage: number; taken_at: string }[]
 }
 
-type Tab = 'students' | 'courses' | 'assignments'
+type Tab = 'students' | 'courses' | 'assignments' | 'exam-results'
+
+interface ExamResultRow {
+  student_name: string
+  score: number
+  total_questions: number
+  percentage: number
+  completed_at: string | null
+}
+
+interface ExamWithResults {
+  exam_id: string
+  exam_title: string
+  results: ExamResultRow[]
+}
 
 interface Props {
   userEmail?: string
@@ -63,6 +77,9 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set())
   const [assigning, setAssigning] = useState(false)
   const [assignResult, setAssignResult] = useState<string | null>(null)
+  const [examResults, setExamResults] = useState<ExamWithResults[]>([])
+  const [examResultsLoading, setExamResultsLoading] = useState(false)
+  const [expandedExams, setExpandedExams] = useState<Set<string>>(new Set())
 
   const loadAll = useCallback(() => {
     setLoading(true)
@@ -83,6 +100,22 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
+
+  const loadExamResults = () => {
+    setExamResultsLoading(true)
+    fetch('/api/teacher/exam-results')
+      .then(r => r.ok ? r.json() : [])
+      .then((data: ExamWithResults[]) => setExamResults(Array.isArray(data) ? data : []))
+      .catch(() => setExamResults([]))
+      .finally(() => setExamResultsLoading(false))
+  }
+
+  useEffect(() => {
+    if (tab === 'exam-results' && examResults.length === 0 && !examResultsLoading) {
+      loadExamResults()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab])
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -170,6 +203,7 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
             { id: 'students', label: 'My Students', icon: <Users className="w-4 h-4" /> },
             { id: 'courses', label: 'My Courses', icon: <BookOpen className="w-4 h-4" /> },
             { id: 'assignments', label: 'Assignments', icon: <ClipboardList className="w-4 h-4" /> },
+            { id: 'exam-results', label: 'Exam Results', icon: <BarChart2 className="w-4 h-4" /> },
           ] as { id: Tab; label: string; icon: React.ReactNode }[]).map(t => (
             <button
               key={t.id}
@@ -363,6 +397,77 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+        )}
+        {/* ── Tab: Exam Results ── */}
+        {tab === 'exam-results' && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-semibold">Exam Results</h2>
+            {examResultsLoading ? (
+              <div className="space-y-2">{[1, 2].map(i => <div key={i} className="h-16 rounded-xl bg-muted animate-pulse" />)}</div>
+            ) : examResults.length === 0 ? (
+              <div className="text-center py-16 border-2 border-dashed border-border rounded-xl">
+                <BarChart2 className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                <p className="text-muted-foreground font-medium">No exams created yet</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {examResults.map(exam => {
+                  const isExpanded = expandedExams.has(exam.exam_id)
+                  const completed = exam.results.length
+                  return (
+                    <div key={exam.exam_id} className="bg-card border border-border rounded-xl overflow-hidden">
+                      <button
+                        onClick={() => setExpandedExams(prev => {
+                          const next = new Set(prev)
+                          next.has(exam.exam_id) ? next.delete(exam.exam_id) : next.add(exam.exam_id)
+                          return next
+                        })}
+                        className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors"
+                      >
+                        <div className="text-left">
+                          <p className="font-medium text-foreground">{exam.exam_title}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {completed} student{completed !== 1 ? 's' : ''} completed
+                          </p>
+                        </div>
+                        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                      </button>
+                      {isExpanded && (
+                        <div className="border-t border-border">
+                          {exam.results.length === 0 ? (
+                            <p className="px-5 py-4 text-sm text-muted-foreground">No students have completed this exam yet.</p>
+                          ) : (
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-border bg-muted/30">
+                                  <th className="text-left px-5 py-2.5 font-medium text-muted-foreground">Student</th>
+                                  <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Score</th>
+                                  <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Result</th>
+                                  <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Date</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {exam.results.map((r, i) => (
+                                  <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
+                                    <td className="px-5 py-3 font-medium text-foreground">{r.student_name}</td>
+                                    <td className="px-4 py-3 text-center text-muted-foreground">{r.score}/{r.total_questions}</td>
+                                    <td className="px-4 py-3 text-center"><ScoreBadge pct={r.percentage} /></td>
+                                    <td className="px-4 py-3 text-right text-xs text-muted-foreground">
+                                      {r.completed_at ? new Date(r.completed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—'}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>

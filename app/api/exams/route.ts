@@ -9,10 +9,12 @@ export async function GET() {
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const admin = getSupabaseAdmin()
+
+    // Fetch exams created by user OR assigned to user
     const { data, error } = await admin
       .from('exams')
-      .select('id, title, time_limit_minutes, difficulty, created_at, source_classroom_ids, questions')
-      .eq('created_by', user.id)
+      .select('id, title, time_limit_minutes, difficulty, created_at, source_classroom_ids, questions, assigned_to')
+      .or(`created_by.eq.${user.id},assigned_to.cs.{${user.id}}`)
       .order('created_at', { ascending: false })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -28,13 +30,14 @@ export async function GET() {
       : { data: [] }
 
     // Keep only the most recent result per exam
-    const resultMap = new Map<string, { score: number; total_questions: number; percentage: number }>()
+    const resultMap = new Map<string, { score: number; total_questions: number; percentage: number; submitted_at: string }>()
     for (const r of results ?? []) {
       if (!resultMap.has(r.exam_id as string)) {
         resultMap.set(r.exam_id as string, {
           score: r.score as number,
           total_questions: r.total_questions as number,
           percentage: r.percentage as number,
+          submitted_at: r.submitted_at as string,
         })
       }
     }

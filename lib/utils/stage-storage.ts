@@ -176,7 +176,7 @@ export async function getFirstSlideByStages(
         const scenes = await db.scenes.where('stageId').equals(stageId).sortBy('order');
         const firstSlide = scenes.find((s) => s.content?.type === 'slide');
         if (firstSlide && firstSlide.content.type === 'slide') {
-          const slide = structuredClone(firstSlide.content.canvas);
+          const slide = JSON.parse(JSON.stringify(firstSlide.content.canvas));
 
           // Resolve gen_img_* placeholders from mediaFiles
           const placeholderEls = slide.elements.filter(

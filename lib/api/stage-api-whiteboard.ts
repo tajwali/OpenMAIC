@@ -60,7 +60,7 @@ export function createWhiteboardAPI(store: StageStore) {
         if (!state.stage?.whiteboard || state.stage.whiteboard.length === 0) {
           return whiteboardAPI.create();
         }
-        return { success: true, data: state.stage.whiteboard.at(-1) };
+        return { success: true, data: state.stage.whiteboard[state.stage.whiteboard.length - 1] };
       } catch (error) {
         return { success: false, error: String(error) };
       }

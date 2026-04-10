@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { BookOpen, Plus, Trophy, BarChart2, LogOut, FileText, CheckCircle } from 'lucide-react'
+import { BookOpen, Plus, Trophy, BarChart2, LogOut, FileText, CheckCircle, Trash2 } from 'lucide-react'
 
 interface Classroom {
   id: string
@@ -14,6 +14,7 @@ interface Classroom {
   subject_id: string | null
   subject_name: string | null
   subject_icon: string | null
+  completed?: boolean
 }
 
 interface Stats {
@@ -38,6 +39,7 @@ interface ExamResult {
   score: number
   total_questions: number
   percentage: number
+  submitted_at?: string
 }
 
 interface Exam {
@@ -49,6 +51,13 @@ interface Exam {
   created_at: string
   attempted: boolean
   result: ExamResult | null
+}
+
+interface CourseProgress {
+  classroom_id: string
+  completed: boolean
+  last_scene_id: string | null
+  last_accessed: string | null
 }
 
 interface Props {
@@ -64,27 +73,43 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
   const [exams, setExams] = useState<Exam[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+  const loadAll = useCallback(() => {
     const safeJson = (r: Response) => r.ok ? r.json().catch(() => null) : Promise.resolve(null)
     Promise.all([
       fetch('/api/user/classrooms').then(safeJson).catch(() => null),
       fetch('/api/user/stats').then(safeJson).catch(() => null),
       fetch('/api/user/quiz-results').then(safeJson).catch(() => null),
       fetch('/api/exams').then(safeJson).catch(() => null),
-    ]).then(([courses, userStats, quizzes, examList]) => {
-      setClassrooms(Array.isArray(courses) ? (courses as Classroom[]) : [])
+      fetch('/api/user/course-progress').then(safeJson).catch(() => null),
+    ]).then(([courses, userStats, quizzes, examList, progressList]) => {
+      const progressMap = new Map<string, boolean>()
+      if (Array.isArray(progressList)) {
+        for (const p of progressList as CourseProgress[]) {
+          progressMap.set(p.classroom_id, p.completed ?? false)
+        }
+      }
+      const rawCourses = Array.isArray(courses) ? (courses as Classroom[]) : []
+      setClassrooms(rawCourses.map(c => ({ ...c, completed: progressMap.get(c.id) ?? false })))
       setStats((userStats as Stats | null) ?? { totalCourses: 0, quizzesTaken: 0, avgScore: null, coursesCompleted: 0 })
       setQuizHistory(Array.isArray(quizzes) ? (quizzes as QuizResult[]).slice(0, 5) : [])
       setExams(Array.isArray(examList) ? (examList as Exam[]) : [])
-    }).catch(() => {
-      // Never let a fetch failure crash the dashboard
-    }).finally(() => setLoading(false))
+    }).catch(() => {}).finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => { loadAll() }, [loadAll])
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
     router.push('/login')
     router.refresh()
+  }
+
+  const handleDeleteCourse = async (id: string) => {
+    if (!confirm('Delete this course? This cannot be undone.')) return
+    try {
+      const res = await fetch(`/api/user/classrooms?id=${id}`, { method: 'DELETE' })
+      if (res.ok) setClassrooms(prev => prev.filter(c => c.id !== id))
+    } catch { /* ignore */ }
   }
 
   // Group classrooms by subject
@@ -155,9 +180,7 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
           <h2 className="text-lg font-semibold mb-4">My Courses</h2>
           {loading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="h-32 rounded-xl bg-muted animate-pulse" />
-              ))}
+              {[1, 2, 3].map(i => <div key={i} className="h-32 rounded-xl bg-muted animate-pulse" />)}
             </div>
           ) : classrooms.length === 0 ? (
             <div className="text-center py-16 border-2 border-dashed border-border rounded-xl">
@@ -181,7 +204,12 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {group.courses.map(c => (
-                      <CourseCard key={c.id} classroom={c} onClick={() => router.push(`/classroom/${c.id}`)} />
+                      <CourseCard
+                        key={c.id}
+                        classroom={c}
+                        onClick={() => router.push(`/classroom/${c.id}`)}
+                        onDelete={() => handleDeleteCourse(c.id)}
+                      />
                     ))}
                   </div>
                 </div>
@@ -203,7 +231,7 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
           </div>
           {loading ? (
             <div className="space-y-2">
-              {[1, 2].map(i => <div key={i} className="h-14 rounded-lg bg-muted animate-pulse" />)}
+              {[1, 2].map(i => <div key={i} className="h-20 rounded-lg bg-muted animate-pulse" />)}
             </div>
           ) : exams.length === 0 ? (
             <div className="text-center py-10 border-2 border-dashed border-border rounded-xl">
@@ -213,24 +241,7 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {exams.map(e => (
-                <button
-                  key={e.id}
-                  onClick={() => router.push(`/exam/${e.id}`)}
-                  className="text-left bg-card border border-border rounded-xl p-4 hover:border-primary/50 hover:shadow-md transition-all"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="font-medium text-sm text-foreground line-clamp-2">{e.title}</p>
-                    {e.attempted && <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />}
-                  </div>
-                  <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                    <span>{e.question_count} questions</span>
-                    <span>{e.time_limit_minutes} min</span>
-                    <span className="capitalize">{e.difficulty}</span>
-                    {e.result && (
-                      <ScoreBadge pct={e.result.percentage} label={`${e.result.score}/${e.result.total_questions}`} />
-                    )}
-                  </div>
-                </button>
+                <ExamCard key={e.id} exam={e} onNavigate={() => router.push(`/exam/${e.id}`)} />
               ))}
             </div>
           )}
@@ -283,6 +294,70 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
   )
 }
 
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function ExamCard({ exam, onNavigate }: { exam: Exam; onNavigate: () => void }) {
+  const r = exam.result
+  const pct = r ? Math.round(r.percentage) : null
+  const scoreColor = pct === null ? '' : pct >= 80
+    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+    : pct >= 60
+      ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
+      : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <p className="font-medium text-sm text-foreground line-clamp-2">{exam.title}</p>
+        {exam.attempted && <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />}
+      </div>
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <span>{exam.question_count} questions</span>
+        <span>{exam.time_limit_minutes} min</span>
+        <span className="capitalize">{exam.difficulty}</span>
+      </div>
+      {r ? (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className={`px-2.5 py-1 rounded-lg text-sm font-bold ${scoreColor}`}>
+              {r.score}/{r.total_questions} — {pct}%
+            </span>
+            {r.submitted_at && (
+              <span className="text-xs text-muted-foreground">
+                {new Date(r.submitted_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+              </span>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={onNavigate}
+              className="text-xs px-3 py-1.5 border border-border rounded-lg hover:bg-muted transition-colors text-muted-foreground"
+            >
+              Review
+            </button>
+            <button
+              onClick={onNavigate}
+              className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity"
+            >
+              Retake
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">Not taken yet</span>
+          <button
+            onClick={onNavigate}
+            className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity"
+          >
+            Take Exam →
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ScoreBadge({ pct, label }: { pct: number; label?: string }) {
   const rounded = Math.round(pct)
   const color = rounded >= 80
@@ -309,26 +384,39 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
   )
 }
 
-function CourseCard({ classroom, onClick }: { classroom: Classroom; onClick: () => void }) {
+function CourseCard({ classroom, onClick, onDelete }: { classroom: Classroom; onClick: () => void; onDelete: () => void }) {
   const date = new Date(classroom.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
   const displayTitle = classroom.short_title ?? classroom.title
   return (
-    <button
-      onClick={onClick}
-      className="text-left bg-card border border-border rounded-xl p-5 hover:border-primary/50 hover:shadow-md transition-all group"
-    >
-      <div className="flex items-start justify-between mb-2">
-        <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium">
-          {classroom.status}
-        </span>
-        <span className="text-xs text-muted-foreground">{date}</span>
-      </div>
-      <p className="font-medium text-sm text-foreground group-hover:text-primary transition-colors line-clamp-3">
-        {displayTitle}
-      </p>
-      {classroom.short_title && classroom.title !== classroom.short_title && (
-        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{classroom.title}</p>
-      )}
-    </button>
+    <div className="relative group bg-card border border-border rounded-xl p-5 hover:border-primary/50 hover:shadow-md transition-all">
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete() }}
+        className="absolute top-3 right-3 p-1.5 rounded-lg text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+        title="Delete course"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+      <button onClick={onClick} className="w-full text-left">
+        <div className="flex items-start justify-between mb-2 pr-6">
+          <div className="flex items-center gap-2">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium">
+              {classroom.status}
+            </span>
+            {classroom.completed && (
+              <span title="Completed" className="text-green-500">
+                <CheckCircle className="w-3.5 h-3.5" />
+              </span>
+            )}
+          </div>
+          <span className="text-xs text-muted-foreground">{date}</span>
+        </div>
+        <p className="font-medium text-sm text-foreground group-hover:text-primary transition-colors line-clamp-3">
+          {displayTitle}
+        </p>
+        {classroom.short_title && classroom.title !== classroom.short_title && (
+          <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{classroom.title}</p>
+        )}
+      </button>
+    </div>
   )
 }

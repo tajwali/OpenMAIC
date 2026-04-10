@@ -389,9 +389,21 @@ export default function ExamPage() {
           <div className="mt-6 mb-10 flex gap-3">
             <button
               onClick={() => router.push('/')}
-              className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-colors"
+              className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 font-medium text-sm hover:bg-gray-50 transition-colors"
             >
               Back to Dashboard
+            </button>
+            <button
+              onClick={() => {
+                setResult(null)
+                setAnswers({})
+                setCurrentQ(0)
+                if (exam) setSecondsLeft(exam.time_limit_minutes * 60)
+                setPhase('before')
+              }}
+              className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-colors"
+            >
+              Retake Exam
             </button>
           </div>
         </div>

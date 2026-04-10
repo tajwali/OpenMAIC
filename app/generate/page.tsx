@@ -148,12 +148,33 @@ function HomePage() {
 
   const loadClassrooms = async () => {
     try {
-      const list = await listStages();
-      setClassrooms(list);
-      // Load first slide thumbnails
-      if (list.length > 0) {
-        const slides = await getFirstSlideByStages(list.map((c) => c.id));
-        setThumbnails(slides);
+      // Load from DB API
+      const res = await fetch('/api/user/classrooms');
+      if (res.ok) {
+        const dbCourses = await res.json() as { id: string; title: string; created_at: string }[];
+        // Map DB courses to StageListItem format for ClassroomCard compatibility
+        const ts = dbCourses.map(c => new Date(c.created_at).getTime());
+        const list: StageListItem[] = dbCourses.map((c, i) => ({
+          id: c.id,
+          name: c.title,
+          sceneCount: 0,
+          createdAt: ts[i],
+          updatedAt: ts[i],
+        }));
+        setClassrooms(list);
+        // Also load local thumbnails for any courses that exist in IndexedDB
+        if (list.length > 0) {
+          const slides = await getFirstSlideByStages(list.map((c) => c.id));
+          setThumbnails(slides);
+        }
+      } else {
+        // Fallback to IndexedDB if API fails (unauthenticated or error)
+        const list = await listStages();
+        setClassrooms(list);
+        if (list.length > 0) {
+          const slides = await getFirstSlideByStages(list.map((c) => c.id));
+          setThumbnails(slides);
+        }
       }
     } catch (err) {
       log.error('Failed to load classrooms:', err);
@@ -179,8 +200,16 @@ function HomePage() {
   const confirmDelete = async (id: string) => {
     setPendingDeleteId(null);
     try {
-      await deleteStageData(id);
-      await loadClassrooms();
+      // Try DB delete first
+      const res = await fetch(`/api/user/classrooms?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setClassrooms(prev => prev.filter(c => c.id !== id));
+        setThumbnails(prev => { const next = { ...prev }; delete next[id]; return next; });
+      } else {
+        // Fallback: delete from IndexedDB only
+        await deleteStageData(id);
+        await loadClassrooms();
+      }
     } catch (err) {
       log.error('Failed to delete classroom:', err);
       toast.error('Failed to delete classroom');

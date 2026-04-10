@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { BookOpen, BarChart2, Trophy, LogOut } from 'lucide-react'
+import { BookOpen, BarChart2, Trophy, LogOut, FileText, CheckCircle } from 'lucide-react'
 
 interface AssignedClassroom {
   id: string
@@ -10,6 +10,7 @@ interface AssignedClassroom {
   topic: string
   status: string
   assigned_at: string
+  completed?: boolean
 }
 
 interface Stats {
@@ -30,6 +31,29 @@ interface QuizResult {
   taken_at: string
 }
 
+interface ExamResult {
+  score: number
+  total_questions: number
+  percentage: number
+  submitted_at?: string
+}
+
+interface Exam {
+  id: string
+  title: string
+  time_limit_minutes: number
+  difficulty: string
+  question_count: number
+  created_at: string
+  attempted: boolean
+  result: ExamResult | null
+}
+
+interface CourseProgress {
+  classroom_id: string
+  completed: boolean
+}
+
 interface Props {
   userEmail?: string
   displayName?: string
@@ -40,6 +64,7 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
   const [classrooms, setClassrooms] = useState<AssignedClassroom[]>([])
   const [stats, setStats] = useState<Stats>({ totalCourses: 0, quizzesTaken: 0, avgScore: null, coursesCompleted: 0 })
   const [quizHistory, setQuizHistory] = useState<QuizResult[]>([])
+  const [exams, setExams] = useState<Exam[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -48,13 +73,21 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
       fetch('/api/user/assigned-classrooms').then(safeJson).catch(() => null),
       fetch('/api/user/stats').then(safeJson).catch(() => null),
       fetch('/api/user/quiz-results').then(safeJson).catch(() => null),
-    ]).then(([courses, userStats, quizzes]) => {
-      setClassrooms(Array.isArray(courses) ? (courses as AssignedClassroom[]) : [])
+      fetch('/api/exams').then(safeJson).catch(() => null),
+      fetch('/api/user/course-progress').then(safeJson).catch(() => null),
+    ]).then(([courses, userStats, quizzes, examList, progressList]) => {
+      const progressMap = new Map<string, boolean>()
+      if (Array.isArray(progressList)) {
+        for (const p of progressList as CourseProgress[]) {
+          progressMap.set(p.classroom_id, p.completed ?? false)
+        }
+      }
+      const rawCourses = Array.isArray(courses) ? (courses as AssignedClassroom[]) : []
+      setClassrooms(rawCourses.map(c => ({ ...c, completed: progressMap.get(c.id) ?? false })))
       setStats((userStats as Stats | null) ?? { totalCourses: 0, quizzesTaken: 0, avgScore: null, coursesCompleted: 0 })
       setQuizHistory(Array.isArray(quizzes) ? (quizzes as QuizResult[]).slice(0, 5) : [])
-    }).catch(() => {
-      // Never let a fetch failure crash the dashboard
-    }).finally(() => setLoading(false))
+      setExams(Array.isArray(examList) ? (examList as Exam[]) : [])
+    }).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
   const handleLogout = async () => {
@@ -115,9 +148,14 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
                   className="text-left bg-card border border-border rounded-xl p-5 hover:border-primary/50 hover:shadow-md transition-all group"
                 >
                   <div className="flex items-start justify-between mb-2">
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium">
-                      assigned
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium">
+                        assigned
+                      </span>
+                      {c.completed && (
+                        <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                      )}
+                    </div>
                     <span className="text-xs text-muted-foreground">
                       {new Date(c.assigned_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                     </span>
@@ -126,6 +164,27 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
                     {c.title}
                   </p>
                 </button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* My Exams */}
+        <section>
+          <h2 className="text-lg font-semibold mb-4">My Exams</h2>
+          {loading ? (
+            <div className="space-y-2">
+              {[1, 2].map(i => <div key={i} className="h-20 rounded-lg bg-muted animate-pulse" />)}
+            </div>
+          ) : exams.length === 0 ? (
+            <div className="text-center py-10 border-2 border-dashed border-border rounded-xl">
+              <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+              <p className="text-muted-foreground text-sm">No exams assigned yet</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {exams.map((e, i) => (
+                <ExamCard key={e.id} exam={e} index={i} onNavigate={() => router.push(`/exam/${e.id}`)} />
               ))}
             </div>
           )}
@@ -174,6 +233,71 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
           )}
         </section>
       </main>
+    </div>
+  )
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function ExamCard({ exam, index, onNavigate }: { exam: Exam; index: number; onNavigate: () => void }) {
+  const r = exam.result
+  const pct = r ? Math.round(r.percentage) : null
+  const scoreColor = pct === null ? '' : pct >= 80
+    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+    : pct >= 60
+      ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
+      : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <p className="font-medium text-sm text-foreground line-clamp-2">
+          Exam #{index + 1} — {exam.title}
+        </p>
+        {exam.attempted && <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />}
+      </div>
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <span>{exam.question_count} questions</span>
+        <span>{exam.time_limit_minutes} min</span>
+      </div>
+      {r ? (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className={`px-2.5 py-1 rounded-lg text-sm font-bold ${scoreColor}`}>
+              {r.score}/{r.total_questions} — {pct}%
+            </span>
+            {r.submitted_at && (
+              <span className="text-xs text-muted-foreground">
+                {new Date(r.submitted_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+              </span>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={onNavigate}
+              className="text-xs px-3 py-1.5 border border-border rounded-lg hover:bg-muted transition-colors text-muted-foreground"
+            >
+              Review Results
+            </button>
+            <button
+              onClick={onNavigate}
+              className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity"
+            >
+              Retake
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">Not taken yet</span>
+          <button
+            onClick={onNavigate}
+            className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity"
+          >
+            Take Exam →
+          </button>
+        </div>
+      )}
     </div>
   )
 }

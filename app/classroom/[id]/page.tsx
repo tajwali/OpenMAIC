@@ -25,6 +25,7 @@ export default function ClassroomDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   const generationStartedRef = useRef(false);
+  const completionFiredRef = useRef(false);
 
   const { generateRemaining, retrySingleOutline, stop } = useSceneGenerator({
     onComplete: () => {
@@ -101,6 +102,7 @@ export default function ClassroomDetailPage() {
     setLoading(true);
     setError(null);
     generationStartedRef.current = false;
+    completionFiredRef.current = false;
 
     // Clear previous classroom's media tasks to prevent cross-classroom contamination.
     // Placeholder IDs (gen_img_1, gen_vid_1) are NOT globally unique across stages,
@@ -126,6 +128,30 @@ export default function ClassroomDetailPage() {
       stop();
     };
   }, [classroomId, loadClassroom, stop]);
+
+  // Track course completion when user reaches the last scene
+  useEffect(() => {
+    if (loading || error) return;
+
+    const checkCompletion = () => {
+      if (completionFiredRef.current) return;
+      const { scenes, currentSceneId } = useStageStore.getState();
+      if (!currentSceneId || scenes.length === 0) return;
+      const lastScene = scenes[scenes.length - 1];
+      if (lastScene && currentSceneId === lastScene.id) {
+        completionFiredRef.current = true;
+        fetch('/api/user/course-progress', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ classroom_id: classroomId, completed: true, last_scene_id: currentSceneId }),
+        }).catch(() => {});
+      }
+    };
+
+    const unsub = useStageStore.subscribe(() => checkCompletion());
+    checkCompletion();
+    return unsub;
+  }, [loading, error, classroomId]);
 
   // Auto-resume generation for pending outlines
   useEffect(() => {
