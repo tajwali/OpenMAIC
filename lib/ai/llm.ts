@@ -260,6 +260,24 @@ function injectProviderOptions<T extends GenerateTextParams | StreamTextParams>(
   return params;
 }
 
+// ---------------------------------------------------------------------------
+// Overload / rate-limit detection
+// ---------------------------------------------------------------------------
+
+function isOverloadError(error: unknown): boolean {
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return (
+    msg.includes('high demand') ||
+    msg.includes('overloaded') ||
+    msg.includes('rate limit') ||
+    msg.includes('ratelimit') ||
+    msg.includes('quota') ||
+    msg.includes('429') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('too many requests')
+  );
+}
+
 /**
  * Options for LLM call retry on validation failure.
  * This is separate from the AI SDK's built-in maxRetries (which handles network/5xx errors).
@@ -281,57 +299,89 @@ const DEFAULT_VALIDATE = (text: string) => text.trim().length > 0;
  * @param source - A short label for log grouping (e.g. 'scene-stream', 'pbl-chat')
  * @param retryOptions - Optional retry-on-validation-failure settings
  * @param thinking - Optional per-call thinking config (overrides global LLM_THINKING_DISABLED)
+ * @param fallbackModels - Optional pre-resolved models to try if primary is overloaded
  */
 export async function callLLM<T extends GenerateTextParams>(
   params: T,
   source: string,
   retryOptions?: LLMRetryOptions,
   thinking?: ThinkingConfig,
+  fallbackModels?: GenerateTextParams['model'][],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<GenerateTextResult<any, any>> {
   const maxAttempts = (retryOptions?.retries ?? 0) + 1;
   const validate = retryOptions?.validate ?? (maxAttempts > 1 ? DEFAULT_VALIDATE : undefined);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let lastResult: GenerateTextResult<any, any> | undefined;
+  // Build the model chain: [primary, ...fallbacks]
+  const modelChain: GenerateTextParams['model'][] = fallbackModels?.length
+    ? [params.model, ...fallbackModels]
+    : [params.model];
+
   let lastError: unknown;
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      // Resolve effective thinking config: per-call > global env > undefined
-      const effectiveThinking = thinking ?? getGlobalThinkingConfig();
-      const injectedParams = injectProviderOptions(params, effectiveThinking);
+  for (let mIdx = 0; mIdx < modelChain.length; mIdx++) {
+    const isLastModel = mIdx === modelChain.length - 1;
+    const activeParams = mIdx === 0 ? params : { ...params, model: modelChain[mIdx] };
 
-      // Wrap in thinkingContext so the custom fetch wrapper in providers.ts
-      // can read the config and inject vendor-specific body params for
-      // OpenAI-compatible providers.
-      const result = await thinkingContext.run(effectiveThinking, () =>
-        generateText(injectedParams),
-      );
+    if (mIdx > 0) {
+      log.info(`[${source}] Trying fallback model #${mIdx}: ${getModelId(activeParams)}`);
+    }
 
-      // Validate result (only when retries are configured)
-      if (validate && !validate(result.text)) {
-        log.warn(
-          `[${source}] Validation failed (attempt ${attempt}/${maxAttempts}), ${attempt < maxAttempts ? 'retrying...' : 'giving up'}`,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let lastResult: GenerateTextResult<any, any> | undefined;
+    let switchToNextModel = false;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        // Resolve effective thinking config: per-call > global env > undefined
+        const effectiveThinking = thinking ?? getGlobalThinkingConfig();
+        const injectedParams = injectProviderOptions(activeParams, effectiveThinking);
+
+        // Wrap in thinkingContext so the custom fetch wrapper in providers.ts
+        // can read the config and inject vendor-specific body params for
+        // OpenAI-compatible providers.
+        const result = await thinkingContext.run(effectiveThinking, () =>
+          generateText(injectedParams),
         );
-        lastResult = result;
-        continue;
-      }
 
-      return result;
-    } catch (error) {
-      lastError = error;
+        // Validate result (only when retries are configured)
+        if (validate && !validate(result.text)) {
+          log.warn(
+            `[${source}] Validation failed (attempt ${attempt}/${maxAttempts}), ${attempt < maxAttempts ? 'retrying...' : 'giving up'}`,
+          );
+          lastResult = result;
+          continue;
+        }
 
-      if (attempt < maxAttempts) {
-        log.warn(`[${source}] Call failed (attempt ${attempt}/${maxAttempts}), retrying...`, error);
-        continue;
+        return result;
+      } catch (error) {
+        lastError = error;
+
+        // On overload/rate-limit: skip remaining retries and try next fallback model
+        if (!isLastModel && isOverloadError(error)) {
+          log.warn(
+            `[${source}] Model ${getModelId(activeParams)} overloaded/rate-limited, switching to fallback model #${mIdx + 1}...`,
+          );
+          switchToNextModel = true;
+          break;
+        }
+
+        if (attempt < maxAttempts) {
+          log.warn(`[${source}] Call failed (attempt ${attempt}/${maxAttempts}), retrying...`, error);
+          continue;
+        }
       }
     }
+
+    if (switchToNextModel) continue;
+
+    // All validation retries exhausted — return best result or bubble up error
+    if (lastResult) return lastResult;
+    if (lastError) throw lastError;
   }
 
-  // All attempts exhausted — return last result or throw last error
-  if (lastResult) return lastResult;
-  throw lastError;
+  if (lastError) throw lastError;
+  throw new Error(`[${source}] LLM call produced no result`);
 }
 
 /**

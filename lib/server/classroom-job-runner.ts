@@ -8,7 +8,7 @@ import {
 } from '@/lib/server/classroom-job-store';
 import { getSupabaseAdmin } from '@/lib/server/supabase-admin';
 import { callLLM } from '@/lib/ai/llm';
-import { resolveModel } from '@/lib/server/resolve-model';
+import { resolveModel, resolveFallbackModels } from '@/lib/server/resolve-model';
 
 const log = createLogger('ClassroomJob');
 const runningJobs = new Map<string, Promise<void>>();
@@ -24,7 +24,8 @@ async function classifySubject(title: string, requirement: string): Promise<stri
     if (!subjects?.length) return null;
 
     const subjectList = subjects.map(s => s.name as string).join(', ');
-    const { model: languageModel } = resolveModel({});
+    const { model: languageModel, modelString } = resolveModel({});
+    const fallbackModels = resolveFallbackModels(modelString);
     const result = await callLLM(
       {
         model: languageModel,
@@ -32,6 +33,9 @@ async function classifySubject(title: string, requirement: string): Promise<stri
         prompt: `Course title: "${title}"\nCourse requirement: "${requirement.slice(0, 300)}"\n\nClassify into ONE of these subjects: ${subjectList}\n\nRespond with only the subject name.`,
       },
       'subject-classify',
+      undefined,
+      undefined,
+      fallbackModels,
     );
 
     const classified = result.text.trim();

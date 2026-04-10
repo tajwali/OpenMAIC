@@ -11,10 +11,41 @@ import { resolveApiKey, resolveBaseUrl, resolveProxy } from '@/lib/server/provid
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
 
 export interface ResolvedModel extends ModelWithInfo {
-  /** Original model string (e.g. "openai/gpt-4o-mini") */
+  /** Original model string (e.g. "google:gemini-2.0-flash") */
   modelString: string;
   /** Effective API key after server-side fallback resolution */
   apiKey: string;
+}
+
+// ---------------------------------------------------------------------------
+// Model fallback chain
+//
+// Ordered list of models to try when the primary is overloaded or unavailable.
+// The first entry wins (primary model). Each entry can be overridden by the
+// DEFAULT_MODEL env var, which replaces the first slot.
+// ---------------------------------------------------------------------------
+const MODEL_FALLBACK_CHAIN: string[] = [
+  process.env.DEFAULT_MODEL,
+  'google:gemini-2.0-flash',
+  'google:gemini-1.5-flash',
+].filter((s): s is string => typeof s === 'string' && s.length > 0);
+
+// Deduplicate while preserving order (env value may match a built-in entry)
+const seen = new Set<string>();
+const DEDUPED_CHAIN: string[] = [];
+for (const m of MODEL_FALLBACK_CHAIN) {
+  if (!seen.has(m)) { seen.add(m); DEDUPED_CHAIN.push(m); }
+}
+
+/** The primary model string — first in the chain. */
+export const DEFAULT_LLM_MODEL = DEDUPED_CHAIN[0];
+
+/**
+ * Returns the full ordered model fallback chain.
+ * Index 0 is the primary; subsequent entries are tried on overload/rate-limit.
+ */
+export function getModelFallbackChain(): string[] {
+  return [...DEDUPED_CHAIN];
 }
 
 /**
@@ -29,7 +60,7 @@ export function resolveModel(params: {
   providerType?: string;
   requiresApiKey?: boolean;
 }): ResolvedModel {
-  const modelString = params.modelString || process.env.DEFAULT_MODEL || 'gpt-4o-mini';
+  const modelString = params.modelString || DEFAULT_LLM_MODEL;
   const { providerId, modelId } = parseModelString(modelString);
 
   const clientBaseUrl = params.baseUrl || undefined;
@@ -71,4 +102,23 @@ export function resolveModelFromHeaders(req: NextRequest): ResolvedModel {
     providerType: req.headers.get('x-provider-type') || undefined,
     requiresApiKey: req.headers.get('x-requires-api-key') === 'true' ? true : undefined,
   });
+}
+
+/**
+ * Pre-resolve all fallback models after the primary.
+ * Returns resolved model objects ready to pass as `fallbackModels` to callLLM.
+ * Silently skips any model that fails to resolve (e.g. missing API key).
+ *
+ * @param primaryModelString - The primary model string (to exclude from fallbacks)
+ */
+export function resolveFallbackModels(primaryModelString: string): ResolvedModel['model'][] {
+  return DEDUPED_CHAIN
+    .filter(s => s !== primaryModelString)
+    .flatMap(s => {
+      try {
+        return [resolveModel({ modelString: s }).model];
+      } catch {
+        return [];
+      }
+    });
 }

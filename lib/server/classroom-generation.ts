@@ -18,7 +18,7 @@ import { getDefaultAgents } from '@/lib/orchestration/registry/store';
 import { createLogger } from '@/lib/logger';
 import { parseModelString } from '@/lib/ai/providers';
 import { resolveApiKey, resolveWebSearchApiKey } from '@/lib/server/provider-config';
-import { resolveModel } from '@/lib/server/resolve-model';
+import { resolveModel, resolveFallbackModels } from '@/lib/server/resolve-model';
 import { searchWithTavily, formatSearchResultsAsContext } from '@/lib/web-search/tavily';
 import { persistClassroom } from '@/lib/server/classroom-storage';
 import {
@@ -176,7 +176,8 @@ export async function generateClassroom(
   });
 
   const { model: languageModel, modelInfo, modelString } = resolveModel({});
-  log.info(`Using server-configured model: ${modelString}`);
+  const fallbackModels = resolveFallbackModels(modelString);
+  log.info(`Using server-configured model: ${modelString}${fallbackModels.length ? ` (${fallbackModels.length} fallback(s) available)` : ''}`);
 
   // Fail fast if the resolved provider has no API key configured
   const { providerId } = parseModelString(modelString);
@@ -199,6 +200,9 @@ export async function generateClassroom(
         maxOutputTokens: modelInfo?.outputWindow,
       },
       'generate-classroom',
+      undefined,
+      undefined,
+      fallbackModels,
     );
     return result.text;
   };
