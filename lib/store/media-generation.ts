@@ -179,6 +179,10 @@ export const useMediaGenerationStore = create<MediaGenerationState>()((set, get)
             retryCount: 0,
             stageId,
           };
+        } else if (rec.blob.size === 0) {
+          // Skip corrupted/empty blob records — would produce a blank image.
+          // These can appear when a failure record was written without an error field.
+          log.warn(`Skipping empty blob for elementId "${elementId}" in stage "${stageId}"`);
         } else {
           // Re-wrap blob with stored mimeType — IndexedDB may drop Blob.type
           const blob = rec.blob.type ? rec.blob : new Blob([rec.blob], { type: rec.mimeType });

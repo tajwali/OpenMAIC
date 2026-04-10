@@ -1,4 +1,4 @@
-import { promises as fs, createReadStream } from 'fs';
+import { promises as fs } from 'fs';
 import path from 'path';
 import { NextRequest, NextResponse } from 'next/server';
 import { CLASSROOMS_DIR, isValidClassroomId } from '@/lib/server/classroom-storage';
@@ -17,8 +17,11 @@ const MIME_TYPES: Record<string, string> = {
   '.aac': 'audio/aac',
 };
 
+// Files larger than this are streamed in chunks; smaller ones are buffered
+const STREAM_THRESHOLD = 10 * 1024 * 1024; // 10 MB
+
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ classroomId: string; path: string[] }> },
 ) {
   const { classroomId, path: pathSegments } = await params;
@@ -57,17 +60,71 @@ export async function GET(
 
     const ext = path.extname(realPath).toLowerCase();
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    const fileSize = stat.size;
 
-    // Stream the file to avoid loading large videos into memory
-    const stream = createReadStream(realPath);
+    // Handle range requests (required for <video> and <audio> seeking)
+    const rangeHeader = req.headers.get('range');
+    if (rangeHeader) {
+      const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
+      if (match) {
+        const start = match[1] ? parseInt(match[1], 10) : 0;
+        const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+        const clampedEnd = Math.min(end, fileSize - 1);
+        const chunkSize = clampedEnd - start + 1;
+
+        const buf = await fs.readFile(realPath);
+        const chunk = buf.slice(start, clampedEnd + 1);
+
+        return new NextResponse(chunk, {
+          status: 206,
+          headers: {
+            'Content-Type': contentType,
+            'Content-Length': String(chunkSize),
+            'Content-Range': `bytes ${start}-${clampedEnd}/${fileSize}`,
+            'Accept-Ranges': 'bytes',
+            'Cache-Control': 'public, max-age=86400',
+          },
+        });
+      }
+    }
+
+    // For small files (images, short audio) — buffer the entire file.
+    // Avoids the Node.js Readable → Web ReadableStream bridge, which can
+    // produce a response with the correct Content-Length header but an empty
+    // body in some Next.js streaming edge cases, resulting in blank images.
+    if (fileSize <= STREAM_THRESHOLD) {
+      const buf = await fs.readFile(realPath);
+      return new NextResponse(buf, {
+        status: 200,
+        headers: {
+          'Content-Type': contentType,
+          'Content-Length': String(fileSize),
+          'Accept-Ranges': 'bytes',
+          'Cache-Control': 'public, max-age=86400',
+        },
+      });
+    }
+
+    // For large files (long videos) — stream in chunks using Web ReadableStream
+    // with explicit Uint8Array conversion to avoid Buffer type mismatches.
+    const CHUNK_SIZE = 1024 * 1024; // 1 MB chunks
+    let offset = 0;
     const webStream = new ReadableStream({
-      start(controller) {
-        stream.on('data', (chunk: Buffer | string) => controller.enqueue(chunk));
-        stream.on('end', () => controller.close());
-        stream.on('error', (err) => controller.error(err));
-      },
-      cancel() {
-        stream.destroy();
+      async pull(controller) {
+        if (offset >= fileSize) {
+          controller.close();
+          return;
+        }
+        const length = Math.min(CHUNK_SIZE, fileSize - offset);
+        const handle = await fs.open(realPath, 'r');
+        try {
+          const buf = Buffer.allocUnsafe(length);
+          await handle.read(buf, 0, length, offset);
+          offset += length;
+          controller.enqueue(new Uint8Array(buf));
+        } finally {
+          await handle.close();
+        }
       },
     });
 
@@ -75,8 +132,9 @@ export async function GET(
       status: 200,
       headers: {
         'Content-Type': contentType,
-        'Content-Length': String(stat.size),
-        'Cache-Control': 'public, max-age=86400, immutable',
+        'Content-Length': String(fileSize),
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'public, max-age=86400',
       },
     });
   } catch (error) {
