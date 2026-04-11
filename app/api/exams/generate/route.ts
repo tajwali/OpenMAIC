@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
     const courseTitles = classrooms.map(c => c.title as string).join(', ')
     const examTitle = title || `Exam: ${courseTitles}`
 
-    const { model: languageModel } = resolveModelFromHeaders(req)
+    const { model: languageModel } = await resolveModelFromHeaders(req)
 
     const difficultyNote =
       difficulty === 'easy'

@@ -9,12 +9,15 @@ import type { NextRequest } from 'next/server';
 import { getModel, parseModelString, type ModelWithInfo } from '@/lib/ai/providers';
 import { resolveApiKey, resolveBaseUrl, resolveProxy } from '@/lib/server/provider-config';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
+import type { ProviderId } from '@/lib/types/provider';
 
 export interface ResolvedModel extends ModelWithInfo {
   /** Original model string (e.g. "google:gemini-2.0-flash") */
   modelString: string;
   /** Effective API key after server-side fallback resolution */
   apiKey: string;
+  /** Resolved provider ID */
+  providerId: ProviderId;
 }
 
 // ---------------------------------------------------------------------------
@@ -53,19 +56,19 @@ export function getModelFallbackChain(): string[] {
  *
  * Use this when model config comes from the request body.
  */
-export function resolveModel(params: {
+export async function resolveModel(params: {
   modelString?: string;
   apiKey?: string;
   baseUrl?: string;
   providerType?: string;
   requiresApiKey?: boolean;
-}): ResolvedModel {
+}): Promise<ResolvedModel> {
   const modelString = params.modelString || DEFAULT_LLM_MODEL;
   const { providerId, modelId } = parseModelString(modelString);
 
   const clientBaseUrl = params.baseUrl || undefined;
   if (clientBaseUrl && process.env.NODE_ENV === 'production') {
-    const ssrfError = validateUrlForSSRF(clientBaseUrl);
+    const ssrfError = await validateUrlForSSRF(clientBaseUrl);
     if (ssrfError) {
       throw new Error(ssrfError);
     }
@@ -86,7 +89,7 @@ export function resolveModel(params: {
     requiresApiKey: params.requiresApiKey,
   });
 
-  return { model, modelInfo, modelString, apiKey };
+  return { model, modelInfo, modelString, apiKey, providerId };
 }
 
 /**
@@ -94,8 +97,8 @@ export function resolveModel(params: {
  *
  * Reads: x-model, x-api-key, x-base-url, x-provider-type, x-requires-api-key
  */
-export function resolveModelFromHeaders(req: NextRequest): ResolvedModel {
-  return resolveModel({
+export async function resolveModelFromHeaders(req: NextRequest): Promise<ResolvedModel> {
+  return await resolveModel({
     modelString: req.headers.get('x-model') || undefined,
     apiKey: req.headers.get('x-api-key') || undefined,
     baseUrl: req.headers.get('x-base-url') || undefined,
@@ -111,14 +114,18 @@ export function resolveModelFromHeaders(req: NextRequest): ResolvedModel {
  *
  * @param primaryModelString - The primary model string (to exclude from fallbacks)
  */
-export function resolveFallbackModels(primaryModelString: string): ResolvedModel['model'][] {
-  return DEDUPED_CHAIN
-    .filter(s => s !== primaryModelString)
-    .flatMap(s => {
-      try {
-        return [resolveModel({ modelString: s }).model];
-      } catch {
-        return [];
-      }
-    });
+export async function resolveFallbackModels(primaryModelString: string): Promise<ResolvedModel['model'][]> {
+  const fallbacks: ResolvedModel['model'][] = [];
+  
+  for (const s of DEDUPED_CHAIN) {
+    if (s === primaryModelString) continue;
+    try {
+      const resolved = await resolveModel({ modelString: s });
+      fallbacks.push(resolved.model);
+    } catch {
+      // Skip models that fail to resolve
+    }
+  }
+  
+  return fallbacks;
 }

@@ -175,8 +175,8 @@ export async function generateClassroom(
     scenesGenerated: 0,
   });
 
-  const { model: languageModel, modelInfo, modelString } = resolveModel({});
-  const fallbackModels = resolveFallbackModels(modelString);
+  const { model: languageModel, modelInfo, modelString } = await resolveModel({});
+  const fallbackModels = await resolveFallbackModels(modelString);
   log.info(`Using server-configured model: ${modelString}${fallbackModels.length ? ` (${fallbackModels.length} fallback(s) available)` : ''}`);
 
   // Fail fast if the resolved provider has no API key configured

@@ -27,8 +27,8 @@ export async function generateCourseTitle(
       ? `Scene titles: "${topTitles}"`
       : '';
 
-    const { model: languageModel, modelString } = resolveModel({});
-    const fallbackModels = resolveFallbackModels(modelString);
+    const { model: languageModel, modelString } = await resolveModel({});
+    const fallbackModels = await resolveFallbackModels(modelString);
 
     const result = await callLLM(
       {
@@ -72,8 +72,8 @@ export async function classifySubject(title: string, requirement: string): Promi
     if (!subjects?.length) return null;
 
     const subjectList = subjects.map((s) => s.name as string).join(', ');
-    const { model: languageModel, modelString } = resolveModel({});
-    const fallbackModels = resolveFallbackModels(modelString);
+    const { model: languageModel, modelString } = await resolveModel({});
+    const fallbackModels = await resolveFallbackModels(modelString);
 
     const result = await callLLM(
       {
