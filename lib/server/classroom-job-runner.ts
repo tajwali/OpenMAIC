@@ -7,67 +7,40 @@ import {
   updateClassroomGenerationJobProgress,
 } from '@/lib/server/classroom-job-store';
 import { getSupabaseAdmin } from '@/lib/server/supabase-admin';
-import { callLLM } from '@/lib/ai/llm';
-import { resolveModel, resolveFallbackModels } from '@/lib/server/resolve-model';
+import { generateCourseTitle, classifySubject } from '@/lib/server/classroom-utils';
 
 const log = createLogger('ClassroomJob');
 const runningJobs = new Map<string, Promise<void>>();
 
-async function classifySubject(title: string, requirement: string): Promise<string | null> {
-  try {
-    const admin = getSupabaseAdmin();
-    const { data: subjects } = await admin
-      .from('subjects')
-      .select('id, name')
-      .order('is_default', { ascending: false });
-
-    if (!subjects?.length) return null;
-
-    const subjectList = subjects.map(s => s.name as string).join(', ');
-    const { model: languageModel, modelString } = resolveModel({});
-    const fallbackModels = resolveFallbackModels(modelString);
-    const result = await callLLM(
-      {
-        model: languageModel,
-        system: 'You are a subject classifier. Respond with ONLY the subject name from the given list, nothing else.',
-        prompt: `Course title: "${title}"\nCourse requirement: "${requirement.slice(0, 300)}"\n\nClassify into ONE of these subjects: ${subjectList}\n\nRespond with only the subject name.`,
-      },
-      'subject-classify',
-      undefined,
-      undefined,
-      fallbackModels,
-    );
-
-    const classified = result.text.trim();
-    const match = subjects.find(s => (s.name as string).toLowerCase() === classified.toLowerCase());
-    return match ? (match.id as string) : null;
-  } catch {
-    return null;
-  }
-}
-
 async function saveClassroomToDatabase(
   userId: string,
   classroomId: string,
-  stageName: string,
   requirement: string,
   scenes: unknown,
 ): Promise<void> {
   const admin = getSupabaseAdmin();
-  const title = (stageName || requirement).slice(0, 100);
 
-  // Derive short_title from first scene title, fallback to requirement
-  let shortTitle: string | null = null;
-  if (Array.isArray(scenes) && scenes.length > 0) {
-    const firstScene = scenes[0] as Record<string, unknown>;
-    if (firstScene.title && typeof firstScene.title === 'string') {
-      shortTitle = firstScene.title.slice(0, 60);
+  // Collect scene titles for title generation
+  const sceneOutlineTitles: string[] = [];
+  if (Array.isArray(scenes)) {
+    for (const scene of scenes as Record<string, unknown>[]) {
+      if (scene.title && typeof scene.title === 'string') {
+        sceneOutlineTitles.push(scene.title);
+      }
     }
   }
-  if (!shortTitle) shortTitle = requirement.slice(0, 60);
 
-  // Auto-classify subject (fire-and-forget safe — null on failure)
+  // Generate a clean LLM title; fall back to truncated requirement
+  const generatedTitle = await generateCourseTitle(requirement, sceneOutlineTitles);
+  const title = (generatedTitle || requirement).slice(0, 100);
+  log.info(`Course title for ${classroomId}: "${title}"`);
+
+  // short_title = first scene title, fallback to requirement
+  const shortTitle = (sceneOutlineTitles[0] ?? requirement).slice(0, 60);
+
+  // Auto-classify subject (null on failure)
   const subjectId = await classifySubject(title, requirement);
+  log.info(`Subject classification for ${classroomId}: ${subjectId ?? 'null (unclassified)'}`);
 
   const { error } = await admin.from('classrooms').insert({
     id: classroomId,
@@ -117,7 +90,6 @@ export function runClassroomGenerationJob(
           await saveClassroomToDatabase(
             userId,
             result.id,
-            result.stage.name,
             input.requirement,
             result.scenes,
           );

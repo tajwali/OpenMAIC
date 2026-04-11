@@ -35,9 +35,11 @@ export async function POST(request: Request) {
     displayName?: string
     role?: string
     inviteCode?: string
+    grade?: string
+    school?: string
   }
 
-  const { email, password, displayName, role = 'mature_student', inviteCode } = body
+  const { email, password, displayName, role = 'mature_student', inviteCode, grade, school } = body
   const cookieStore = await cookies()
 
   const supabase = createServerClient(
@@ -93,6 +95,8 @@ export async function POST(request: Request) {
       display_name: displayName ?? '',
       role: finalRole,
       ...(teacherId ? { teacher_id: teacherId } : {}),
+      ...(finalRole === 'school_student' && grade?.trim() ? { grade: grade.trim() } : {}),
+      ...(finalRole === 'school_student' && school?.trim() ? { school: school.trim() } : {}),
     })
   }
 

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/server/supabase-admin';
+import { generateCourseTitle, classifySubject } from '@/lib/server/classroom-utils';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('ClassroomsAPI');
 
 export async function POST(req: Request) {
   try {
@@ -14,16 +18,33 @@ export async function POST(req: Request) {
     const body = await req.json() as { id?: string; title?: string; topic?: string; scenes?: unknown };
     const { id, title, topic, scenes } = body;
 
-    if (!id || !title) {
-      return NextResponse.json({ error: 'Missing required fields: id, title' }, { status: 400 });
+    if (!id) {
+      return NextResponse.json({ error: 'Missing required field: id' }, { status: 400 });
     }
+
+    const requirement = topic ?? title ?? '';
+
+    // Collect scene titles for LLM title generation
+    const sceneOutlineTitles: string[] = [];
+    if (Array.isArray(scenes)) {
+      for (const scene of scenes as Record<string, unknown>[]) {
+        if (scene.title && typeof scene.title === 'string') sceneOutlineTitles.push(scene.title);
+      }
+    }
+
+    // Generate a clean LLM title; fall back to provided title or topic
+    const generatedTitle = await generateCourseTitle(requirement, sceneOutlineTitles);
+    const finalTitle = (generatedTitle || title || requirement || 'Untitled Course').slice(0, 100);
+    const shortTitle = (sceneOutlineTitles[0] ?? requirement).slice(0, 60) || null;
+    log.info(`Course title for ${id}: "${finalTitle}"`);
 
     const admin = getSupabaseAdmin();
     const { error } = await admin.from('classrooms').upsert({
       id,
       user_id: user.id,
-      title: title.slice(0, 100),
-      topic: (topic ?? '').slice(0, 500),
+      title: finalTitle,
+      short_title: shortTitle,
+      topic: requirement.slice(0, 500),
       scenes: scenes ?? [],
       status: 'complete',
     }, { onConflict: 'id' });
@@ -31,6 +52,19 @@ export async function POST(req: Request) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    // Background: classify subject and update the row (fire-and-forget)
+    void (async () => {
+      try {
+        const subjectId = await classifySubject(finalTitle, requirement);
+        log.info(`Subject classification for ${id}: ${subjectId ?? 'null (unclassified)'}`);
+        if (subjectId) {
+          await admin.from('classrooms').update({ subject_id: subjectId }).eq('id', id);
+        }
+      } catch (err) {
+        log.warn(`Background subject classification failed for ${id}:`, err instanceof Error ? err.message : String(err));
+      }
+    })();
 
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (err) {

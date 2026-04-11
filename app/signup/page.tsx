@@ -12,6 +12,8 @@ export default function SignupPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [inviteCode, setInviteCode] = useState('')
+  const [grade, setGrade] = useState('')
+  const [school, setSchool] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
@@ -24,7 +26,15 @@ export default function SignupPage() {
     const res = await fetch('/api/auth/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, displayName, role, inviteCode: inviteCode.trim() || undefined }),
+      body: JSON.stringify({
+        email,
+        password,
+        displayName,
+        role,
+        inviteCode: inviteCode.trim() || undefined,
+        grade: role === 'school_student' ? grade.trim() || undefined : undefined,
+        school: role === 'school_student' ? school.trim() || undefined : undefined,
+      }),
     })
 
     const data = await res.json()
@@ -101,17 +111,39 @@ export default function SignupPage() {
               />
             </div>
             {role === 'school_student' && (
-              <div>
-                <label className="block text-sm font-medium mb-1">Invite Code</label>
-                <input
-                  type="text"
-                  value={inviteCode}
-                  onChange={e => setInviteCode(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="Enter code from your teacher"
-                />
-              </div>
+              <>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Grade / Year</label>
+                  <input
+                    type="text"
+                    value={grade}
+                    onChange={e => setGrade(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="e.g. Year 10, Grade 9"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">School</label>
+                  <input
+                    type="text"
+                    value={school}
+                    onChange={e => setSchool(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="Your school name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Invite Code</label>
+                  <input
+                    type="text"
+                    value={inviteCode}
+                    onChange={e => setInviteCode(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="Enter code from your teacher"
+                  />
+                </div>
+              </>
             )}
             {error && <p className="text-destructive text-sm">{error}</p>}
             <button
