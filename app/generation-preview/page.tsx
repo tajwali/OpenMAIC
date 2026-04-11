@@ -786,17 +786,31 @@ function GenerationPreviewContent() {
 
       sessionStorage.removeItem('generationSession');
 
-      // Fire-and-forget: save to DB for logged-in users (never blocks navigation)
-      fetch('/api/user/classrooms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: stage.id,
-          title: stage.name,
-          topic: currentSession.requirements.requirement ?? '',
-          scenes: store.scenes,
-        }),
-      }).catch(() => {});
+      // Upload media blobs to server and save to DB in background.
+      // This never blocks navigation — images stay visible from IndexedDB/store
+      // on the current device while the upload runs asynchronously.
+      const _scenesToSave = store.scenes;
+      const _stageId = stage.id;
+      const _title = stage.name;
+      const _topic = currentSession.requirements.requirement ?? '';
+      void (async () => {
+        try {
+          const { uploadMediaAndReplace } = await import('@/lib/utils/upload-media');
+          const scenesWithUrls = await uploadMediaAndReplace(_scenesToSave, _stageId);
+          await fetch('/api/user/classrooms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: _stageId,
+              title: _title,
+              topic: _topic,
+              scenes: scenesWithUrls,
+            }),
+          });
+        } catch {
+          // Best-effort — never let a save failure surface as a user-visible error
+        }
+      })();
 
       await store.saveToStorage();
       router.push(`/classroom/${stage.id}`);
