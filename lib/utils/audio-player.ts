@@ -20,6 +20,8 @@ export class AudioPlayer {
   private muted: boolean = false;
   private volume: number = 1;
   private playbackRate: number = 1;
+  /** Blob URL for the currently loaded IndexedDB audio — tracked so we can revoke it cleanly. */
+  private currentBlobUrl: string | null = null;
 
   /**
    * Play audio (from URL or IndexedDB pre-generated cache)
@@ -54,14 +56,20 @@ export class AudioPlayer {
         return false;
       }
 
-      // Stop current playback
+      // Stop current playback and revoke any pending blob URL from a previous
+      // play() that was stopped before the 'ended' event could fire.
       this.stop();
+      if (this.currentBlobUrl) {
+        URL.revokeObjectURL(this.currentBlobUrl);
+        this.currentBlobUrl = null;
+      }
 
       // Create audio element
       this.audio = new Audio();
 
       // Set audio source
       const blobUrl = URL.createObjectURL(audioRecord.blob);
+      this.currentBlobUrl = blobUrl;
       this.audio.src = blobUrl;
       if (this.muted) this.audio.volume = 0;
       else this.audio.volume = this.volume;
@@ -70,9 +78,11 @@ export class AudioPlayer {
       this.audio.defaultPlaybackRate = this.playbackRate;
       this.audio.playbackRate = this.playbackRate;
 
-      // Set ended callback
+      // Set ended callback — revoke blob URL only after audio has finished
+      // playing to avoid ERR_FILE_NOT_FOUND if the browser is still buffering.
       this.audio.addEventListener('ended', () => {
         URL.revokeObjectURL(blobUrl);
+        this.currentBlobUrl = null;
         this.onEndedCallback?.();
       });
 
@@ -102,7 +112,10 @@ export class AudioPlayer {
   public stop(): void {
     if (this.audio) {
       this.audio.pause();
-      this.audio.currentTime = 0;
+      // Setting src = '' releases the browser's hold on the underlying resource
+      // so that an orphaned audio element doesn't continue buffering the blob URL
+      // after we null out the reference below.
+      this.audio.src = '';
       this.audio = null;
     }
     // Note: onEndedCallback intentionally NOT cleared here because play()
@@ -193,6 +206,11 @@ export class AudioPlayer {
    */
   public destroy(): void {
     this.stop();
+    // Revoke any blob URL that was not cleaned up via the 'ended' event
+    if (this.currentBlobUrl) {
+      URL.revokeObjectURL(this.currentBlobUrl);
+      this.currentBlobUrl = null;
+    }
     this.onEndedCallback = null;
   }
 }

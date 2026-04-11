@@ -148,6 +148,10 @@ export function useDiscussionTTS({ enabled, agents, onAudioStateChange }: Discus
 
     try {
       const providerConfig = ttsProvidersConfig[item.providerId];
+      // Don't send serverBaseUrl to the API — it's a private/internal address
+      // configured server-side. The server resolves it from env vars via
+      // resolveTTSBaseUrl(). Only send baseUrl when there is no server-configured URL.
+      const clientBaseUrl = providerConfig?.serverBaseUrl ? undefined : providerConfig?.baseUrl;
       const res = await fetch('/api/generate/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -158,8 +162,8 @@ export function useDiscussionTTS({ enabled, agents, onAudioStateChange }: Discus
           ttsModelId: item.modelId || providerConfig?.modelId,
           ttsVoice: item.voiceId,
           ttsSpeed: ttsSpeed,
-          ttsApiKey: providerConfig?.apiKey,
-          ttsBaseUrl: providerConfig?.serverBaseUrl || providerConfig?.baseUrl,
+          ttsApiKey: providerConfig?.serverBaseUrl ? undefined : providerConfig?.apiKey,
+          ttsBaseUrl: clientBaseUrl,
         }),
         signal: controller.signal,
       });
