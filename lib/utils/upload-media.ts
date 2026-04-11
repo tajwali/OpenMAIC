@@ -41,60 +41,87 @@ export async function uploadMediaAndReplace(
 
   // --- Images and videos ---------------------------------------------------
 
-  // Collect unique placeholder IDs from slide canvas elements
-  const placeholders = new Set<string>();
+  // Collect image/video elements from all slide scenes
+  type ImgEl = { type: string; src: string };
+  const allImageEls: ImgEl[] = [];
   for (const scene of cloned) {
     if (scene.type !== 'slide') continue;
-    const canvas = (scene.content as { canvas?: { elements?: Array<{ type: string; src: string }> } }).canvas;
+    const canvas = (scene.content as { canvas?: { elements?: ImgEl[] } }).canvas;
     if (!canvas?.elements) continue;
     for (const el of canvas.elements) {
-      if ((el.type === 'image' || el.type === 'video') && isMediaPlaceholder(el.src)) {
-        placeholders.add(el.src);
-      }
+      if (el.type === 'image' || el.type === 'video') allImageEls.push(el);
     }
   }
 
-  // Upload each unique placeholder blob
-  const resolvedUrls = new Map<string, string>(); // elementId → server URL
-  for (const elementId of placeholders) {
-    const key = mediaFileKey(stageId, elementId);
-    const rec = await db.mediaFiles.get(key).catch(() => undefined);
-    if (!rec || rec.blob.size === 0 || rec.error) continue;
+  // For each element, resolve a server URL from the src value.
+  // Three cases:
+  //   1. gen_img_*/gen_vid_* placeholder — look up blob in IndexedDB
+  //   2. data: URL stored directly    — decode base64 to Blob
+  //   3. blob: URL stored directly    — fetch the object URL to Blob
+  const srcToServerUrl = new Map<string, string>(); // src → server URL
 
-    const ext = extFromMime(rec.mimeType);
-    const filename = `${elementId}.${ext}`;
+  for (const el of allImageEls) {
+    const src = el.src;
+    if (!src || srcToServerUrl.has(src)) continue; // already resolved or empty
+    // Skip if already a server URL
+    if (src.startsWith('/') || src.startsWith('http')) continue;
+
+    let blob: Blob | undefined;
+    let ext = 'png';
+
+    if (isMediaPlaceholder(src)) {
+      // Case 1: placeholder — look up IndexedDB
+      const key = mediaFileKey(stageId, src);
+      const rec = await db.mediaFiles.get(key).catch(() => undefined);
+      if (!rec || rec.blob.size === 0 || rec.error) continue;
+      blob = rec.blob.type ? rec.blob : new Blob([rec.blob], { type: rec.mimeType });
+      ext = extFromMime(rec.mimeType);
+    } else if (src.startsWith('data:')) {
+      // Case 2: data: URL — decode directly, never fetch() (CSP blocks it)
+      blob = dataUrlToBlob(src);
+      ext = extFromMime(blob.type);
+    } else if (src.startsWith('blob:')) {
+      // Case 3: blob: URL — fetch the object URL (same-origin, allowed by CSP)
+      try {
+        const res = await fetch(src);
+        blob = await res.blob();
+        ext = extFromMime(blob.type);
+      } catch {
+        log.warn(`Could not fetch blob URL: ${src.slice(0, 60)}`);
+        continue;
+      }
+    } else {
+      continue;
+    }
+
+    if (!blob || blob.size === 0) continue;
+
+    const filename = `img_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
     const form = new FormData();
     form.append('classroomId', stageId);
     form.append('subdir', 'media');
     form.append('filename', filename);
-    form.append('file', rec.blob, filename);
+    form.append('file', blob, filename);
 
     try {
       const res = await fetch('/api/user/classrooms/media', { method: 'POST', body: form });
       if (res.ok) {
         const { url } = (await res.json()) as { url: string };
-        resolvedUrls.set(elementId, url);
-        log.info(`Uploaded ${elementId} → ${url}`);
+        srcToServerUrl.set(src, url);
+        log.info(`Uploaded ${src.slice(0, 30)}… → ${url}`);
       } else {
-        log.warn(`Upload failed for ${elementId}: HTTP ${res.status}`);
+        log.warn(`Upload failed for ${src.slice(0, 40)}: HTTP ${res.status}`);
       }
     } catch (err) {
-      log.warn(`Upload error for ${elementId}:`, err);
+      log.warn(`Upload error for ${src.slice(0, 40)}:`, err);
     }
   }
 
-  // Replace placeholder IDs with server URLs in cloned scenes
-  if (resolvedUrls.size > 0) {
-    for (const scene of cloned) {
-      if (scene.type !== 'slide') continue;
-      const canvas = (scene.content as { canvas?: { elements?: Array<{ type: string; src: string }> } }).canvas;
-      if (!canvas?.elements) continue;
-      for (const el of canvas.elements) {
-        if ((el.type === 'image' || el.type === 'video') && isMediaPlaceholder(el.src)) {
-          const serverUrl = resolvedUrls.get(el.src);
-          if (serverUrl) el.src = serverUrl;
-        }
-      }
+  // Replace all matched src values with server URLs
+  if (srcToServerUrl.size > 0) {
+    for (const el of allImageEls) {
+      const serverUrl = srcToServerUrl.get(el.src);
+      if (serverUrl) el.src = serverUrl;
     }
   }
 
@@ -149,4 +176,22 @@ function extFromMime(mimeType: string): string {
   if (mimeType.includes('mp4')) return 'mp4';
   if (mimeType.includes('webm')) return 'webm';
   return 'bin';
+}
+
+/**
+ * Convert a data: URL to a Blob without using fetch().
+ * fetch('data:...') is blocked by CSP connect-src.
+ */
+function dataUrlToBlob(dataUrl: string): Blob {
+  const comma = dataUrl.indexOf(',');
+  const header = dataUrl.slice(0, comma);
+  const base64 = dataUrl.slice(comma + 1);
+  const mimeMatch = header.match(/data:([^;]+)/);
+  const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mime });
 }

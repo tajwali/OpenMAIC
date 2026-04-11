@@ -261,10 +261,10 @@ async function callVideoApi(
 }
 
 async function fetchAsBlob(url: string): Promise<Blob> {
-  // For data URLs, convert directly
+  // For data URLs, decode directly — never use fetch() on data: URLs because
+  // CSP connect-src blocks it ("Refused to connect because it violates CSP").
   if (url.startsWith('data:')) {
-    const res = await fetch(url);
-    return res.blob();
+    return dataUrlToBlob(url);
   }
   // For remote URLs, proxy through our server to bypass CORS restrictions
   if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -283,4 +283,22 @@ async function fetchAsBlob(url: string): Promise<Blob> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch blob: ${res.status}`);
   return res.blob();
+}
+
+/**
+ * Convert a data: URL to a Blob without using fetch().
+ * Using fetch() on data: URLs is blocked by CSP connect-src.
+ */
+function dataUrlToBlob(dataUrl: string): Blob {
+  const comma = dataUrl.indexOf(',');
+  const header = dataUrl.slice(0, comma);
+  const base64 = dataUrl.slice(comma + 1);
+  const mimeMatch = header.match(/data:([^;]+)/);
+  const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mime });
 }
