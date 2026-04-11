@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Users, BookOpen, ClipboardList, LogOut, Copy, Check, RefreshCw, X, ChevronRight, FileText, BarChart2, ChevronDown } from 'lucide-react'
+import { Users, BookOpen, ClipboardList, LogOut, Copy, Check, RefreshCw, X, ChevronRight, FileText, BarChart2, ChevronDown, UserCircle, Pencil } from 'lucide-react'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -83,6 +83,21 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
   const [examResults, setExamResults] = useState<ExamWithResults[]>([])
   const [examResultsLoading, setExamResultsLoading] = useState(false)
   const [expandedExams, setExpandedExams] = useState<Set<string>>(new Set())
+  // Profile modal
+  const [showProfile, setShowProfile] = useState(false)
+  const [profileName, setProfileName] = useState('')
+  const [profileGender, setProfileGender] = useState('')
+  const [profilePassword, setProfilePassword] = useState('')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileSuccess, setProfileSuccess] = useState(false)
+  // Student edit modal
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null)
+  const [editStudentName, setEditStudentName] = useState('')
+  const [editStudentGrade, setEditStudentGrade] = useState('')
+  const [editStudentPassword, setEditStudentPassword] = useState('')
+  const [editStudentSaving, setEditStudentSaving] = useState(false)
+  const [editStudentError, setEditStudentError] = useState<string | null>(null)
 
   const loadAll = useCallback(() => {
     setLoading(true)
@@ -124,6 +139,79 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
     await fetch('/api/auth/logout', { method: 'POST' })
     router.push('/login')
     router.refresh()
+  }
+
+  const openProfile = async () => {
+    setProfileError(null)
+    setProfileSuccess(false)
+    setProfilePassword('')
+    try {
+      const res = await fetch('/api/user/profile')
+      if (res.ok) {
+        const data = await res.json() as { display_name?: string; gender?: string }
+        setProfileName(data.display_name ?? '')
+        setProfileGender(data.gender ?? '')
+      }
+    } catch { /* ignore */ }
+    setShowProfile(true)
+  }
+
+  const handleSaveProfile = async () => {
+    setProfileSaving(true)
+    setProfileError(null)
+    setProfileSuccess(false)
+    try {
+      const patch: Record<string, string> = {}
+      if (profileName.trim()) patch.display_name = profileName.trim()
+      if (profileGender) patch.gender = profileGender
+      if (profilePassword) patch.new_password = profilePassword
+      const res = await fetch('/api/user/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      const data = await res.json() as { error?: string }
+      if (!res.ok) { setProfileError(data.error ?? 'Failed to save'); return }
+      setProfileSuccess(true)
+      setProfilePassword('')
+    } catch {
+      setProfileError('Network error')
+    } finally {
+      setProfileSaving(false)
+    }
+  }
+
+  const openEditStudent = (s: Student) => {
+    setEditingStudent(s)
+    setEditStudentName(s.display_name)
+    setEditStudentGrade(s.grade ?? '')
+    setEditStudentPassword('')
+    setEditStudentError(null)
+  }
+
+  const handleSaveStudent = async () => {
+    if (!editingStudent) return
+    setEditStudentSaving(true)
+    setEditStudentError(null)
+    try {
+      const patch: Record<string, string> = { student_id: editingStudent.id }
+      if (editStudentName.trim()) patch.display_name = editStudentName.trim()
+      patch.grade = editStudentGrade
+      if (editStudentPassword) patch.new_password = editStudentPassword
+      const res = await fetch('/api/teacher/students', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      const data = await res.json() as { error?: string }
+      if (!res.ok) { setEditStudentError(data.error ?? 'Failed'); return }
+      setEditingStudent(null)
+      loadAll()
+    } catch {
+      setEditStudentError('Network error')
+    } finally {
+      setEditStudentSaving(false)
+    }
   }
 
   const copyInviteCode = () => {
@@ -193,9 +281,14 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
             <h1 className="text-xl font-bold text-foreground">OpenMAIC — Teacher</h1>
             <p className="text-sm text-muted-foreground">{displayName ?? userEmail}</p>
           </div>
-          <button onClick={handleLogout} className="p-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors" title="Logout">
-            <LogOut className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={openProfile} className="p-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors" title="Profile settings">
+              <UserCircle className="w-4 h-4" />
+            </button>
+            <button onClick={handleLogout} className="p-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors" title="Logout">
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -290,13 +383,22 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
                             {s.lastAccessed ? new Date(s.lastAccessed).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—'}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <button
-                              onClick={() => openStudentProgress(s.id)}
-                              className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors"
-                              title="View progress"
-                            >
-                              <ChevronRight className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => openEditStudent(s)}
+                                className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors"
+                                title="Edit student"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => openStudentProgress(s.id)}
+                                className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors"
+                                title="View progress"
+                              >
+                                <ChevronRight className="w-4 h-4" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -538,6 +640,105 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
                 </div>
               </div>
             )}
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Profile Modal ── */}
+      {showProfile && (
+        <Modal onClose={() => setShowProfile(false)} title="Profile Settings">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Display Name</label>
+              <input
+                type="text"
+                value={profileName}
+                onChange={e => setProfileName(e.target.value)}
+                placeholder="Your name"
+                className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Gender</label>
+              <select
+                value={profileGender}
+                onChange={e => setProfileGender(e.target.value)}
+                className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              >
+                <option value="">Prefer not to say</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">New Password <span className="font-normal">(leave blank to keep current)</span></label>
+              <input
+                type="password"
+                value={profilePassword}
+                onChange={e => setProfilePassword(e.target.value)}
+                placeholder="Min 6 characters"
+                className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+            {profileError && <p className="text-xs text-red-500">{profileError}</p>}
+            {profileSuccess && <p className="text-xs text-green-600">Saved successfully</p>}
+            <button
+              onClick={handleSaveProfile}
+              disabled={profileSaving}
+              className="w-full py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              {profileSaving ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Edit Student Modal ── */}
+      {editingStudent && (
+        <Modal onClose={() => setEditingStudent(null)} title={`Edit: ${editingStudent.display_name}`}>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Display Name</label>
+              <input
+                type="text"
+                value={editStudentName}
+                onChange={e => setEditStudentName(e.target.value)}
+                placeholder="Student name"
+                className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Grade</label>
+              <select
+                value={editStudentGrade}
+                onChange={e => setEditStudentGrade(e.target.value)}
+                className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              >
+                <option value="">No grade</option>
+                {['1','2','3','4','5','6','7','8','9','10','11','12'].map(g => (
+                  <option key={g} value={g}>Grade {g}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">New Password <span className="font-normal">(leave blank to keep current)</span></label>
+              <input
+                type="password"
+                value={editStudentPassword}
+                onChange={e => setEditStudentPassword(e.target.value)}
+                placeholder="Min 6 characters"
+                className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+            {editStudentError && <p className="text-xs text-red-500">{editStudentError}</p>}
+            <button
+              onClick={handleSaveStudent}
+              disabled={editStudentSaving}
+              className="w-full py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              {editStudentSaving ? 'Saving…' : 'Save Changes'}
+            </button>
           </div>
         </Modal>
       )}

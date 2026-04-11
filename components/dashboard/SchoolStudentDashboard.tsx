@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { BookOpen, BarChart2, Trophy, LogOut, FileText, CheckCircle } from 'lucide-react'
+import { BookOpen, BarChart2, Trophy, LogOut, FileText, CheckCircle, UserCircle } from 'lucide-react'
 
 interface AssignedClassroom {
   id: string
@@ -66,6 +66,12 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
   const [quizHistory, setQuizHistory] = useState<QuizResult[]>([])
   const [exams, setExams] = useState<Exam[]>([])
   const [loading, setLoading] = useState(true)
+  const [showProfile, setShowProfile] = useState(false)
+  const [profileName, setProfileName] = useState('')
+  const [profilePassword, setProfilePassword] = useState('')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileSuccess, setProfileSuccess] = useState(false)
 
   useEffect(() => {
     const safeJson = (r: Response) => r.ok ? r.json().catch(() => null) : Promise.resolve(null)
@@ -90,6 +96,44 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
     }).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
+  const openProfile = async () => {
+    setProfileError(null)
+    setProfileSuccess(false)
+    setProfilePassword('')
+    try {
+      const res = await fetch('/api/user/profile')
+      if (res.ok) {
+        const data = await res.json() as { display_name?: string }
+        setProfileName(data.display_name ?? '')
+      }
+    } catch { /* ignore */ }
+    setShowProfile(true)
+  }
+
+  const handleSaveProfile = async () => {
+    setProfileSaving(true)
+    setProfileError(null)
+    setProfileSuccess(false)
+    try {
+      const patch: Record<string, string> = {}
+      if (profileName.trim()) patch.display_name = profileName.trim()
+      if (profilePassword) patch.new_password = profilePassword
+      const res = await fetch('/api/user/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      const data = await res.json() as { error?: string }
+      if (!res.ok) { setProfileError(data.error ?? 'Failed'); return }
+      setProfileSuccess(true)
+      setProfilePassword('')
+    } catch {
+      setProfileError('Network error')
+    } finally {
+      setProfileSaving(false)
+    }
+  }
+
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
     router.push('/login')
@@ -105,13 +149,22 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
             <h1 className="text-xl font-bold text-foreground">OpenMAIC</h1>
             <p className="text-sm text-muted-foreground">{displayName ?? userEmail ?? 'My Dashboard'}</p>
           </div>
-          <button
-            onClick={handleLogout}
-            className="p-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
-            title="Logout"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={openProfile}
+              className="p-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
+              title="Profile settings"
+            >
+              <UserCircle className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleLogout}
+              className="p-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -233,6 +286,51 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
           )}
         </section>
       </main>
+
+      {/* ── Profile Modal ── */}
+      {showProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h3 className="font-semibold text-foreground">Profile Settings</h3>
+              <button onClick={() => setShowProfile(false)} className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors">
+                <UserCircle className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Display Name</label>
+                <input
+                  type="text"
+                  value={profileName}
+                  onChange={e => setProfileName(e.target.value)}
+                  placeholder="Your name"
+                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">New Password <span className="font-normal">(leave blank to keep current)</span></label>
+                <input
+                  type="password"
+                  value={profilePassword}
+                  onChange={e => setProfilePassword(e.target.value)}
+                  placeholder="Min 6 characters"
+                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+              </div>
+              {profileError && <p className="text-xs text-red-500">{profileError}</p>}
+              {profileSuccess && <p className="text-xs text-green-600">Saved successfully</p>}
+              <button
+                onClick={handleSaveProfile}
+                disabled={profileSaving}
+                className="w-full py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+              >
+                {profileSaving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

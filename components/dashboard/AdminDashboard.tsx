@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Shield, LogOut, Plus, X, Users, BookOpen, Trash2 } from 'lucide-react'
+import { Shield, LogOut, Plus, X, Users, BookOpen, Trash2, Pencil, Check } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -21,6 +21,7 @@ interface UserRecord {
   teacher_id: string | null
   grade: string | null
   school: string | null
+  disabled: boolean
 }
 
 type Tab = 'users' | 'subjects'
@@ -58,6 +59,12 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  // Inline edit state
+  const [editingUserId, setEditingUserId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editPassword, setEditPassword] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
 
   // Subjects tab state
   const [subjects, setSubjects] = useState<Subject[]>([])
@@ -132,6 +139,53 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
       const res = await fetch(`/api/admin/users?user_id=${targetId}`, { method: 'DELETE' })
       const data = await res.json() as { error?: string }
       if (!res.ok) { setActionError(data.error ?? 'Failed to delete user'); return }
+      loadUsers()
+    } catch {
+      setActionError('Network error')
+    }
+  }
+
+  const openEditUser = (u: UserRecord) => {
+    setEditingUserId(u.id)
+    setEditName(u.display_name ?? '')
+    setEditPassword('')
+    setEditError(null)
+  }
+
+  const handleSaveEdit = async (targetId: string) => {
+    if (!editName.trim() && !editPassword) return
+    setEditSaving(true)
+    setEditError(null)
+    try {
+      const patch: Record<string, unknown> = { user_id: targetId }
+      if (editName.trim()) patch.display_name = editName.trim()
+      if (editPassword) patch.new_password = editPassword
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      const data = await res.json() as { error?: string }
+      if (!res.ok) { setEditError(data.error ?? 'Failed'); return }
+      setEditingUserId(null)
+      loadUsers()
+    } catch {
+      setEditError('Network error')
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  const handleToggleDisable = async (targetId: string, currentlyDisabled: boolean) => {
+    setActionError(null)
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: targetId, disabled: !currentlyDisabled }),
+      })
+      const data = await res.json() as { error?: string }
+      if (!res.ok) { setActionError(data.error ?? 'Failed'); return }
       loadUsers()
     } catch {
       setActionError('Network error')
@@ -328,41 +382,102 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
                   <tbody className="divide-y divide-border">
                     {users.map(u => {
                       const isSelf = u.id === userId
+                      const isEditing = editingUserId === u.id
                       return (
-                        <tr key={u.id} className="hover:bg-muted/20 transition-colors">
-                          <td className="px-4 py-3 font-medium text-foreground">
-                            {u.display_name || <span className="text-muted-foreground italic">—</span>}
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground">{u.email}</td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_BADGE[u.role] ?? 'bg-muted text-muted-foreground'}`}>
-                              {u.role}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-end gap-2">
-                              <select
-                                value={u.role}
-                                disabled={isSelf}
-                                onChange={e => handleChangeRole(u.id, e.target.value as UserRole)}
-                                className="text-xs px-2 py-1 border border-border rounded-lg bg-background text-foreground disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary/50"
-                              >
-                                <option value="admin">admin</option>
-                                <option value="teacher">teacher</option>
-                                <option value="mature_student">mature_student</option>
-                                <option value="school_student">school_student</option>
-                              </select>
-                              <button
-                                onClick={() => handleDeleteUser(u.id)}
-                                disabled={isSelf}
-                                className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                                title={isSelf ? 'Cannot delete your own account' : 'Delete user'}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
+                        <>
+                          <tr key={u.id} className={`hover:bg-muted/20 transition-colors ${u.disabled ? 'opacity-60' : ''}`}>
+                            <td className="px-4 py-3 font-medium text-foreground">
+                              <div className="flex items-center gap-2">
+                                {u.display_name || <span className="text-muted-foreground italic">—</span>}
+                                {u.disabled && (
+                                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400">
+                                    disabled
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-muted-foreground">{u.email}</td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_BADGE[u.role] ?? 'bg-muted text-muted-foreground'}`}>
+                                {u.role}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center justify-end gap-2">
+                                <select
+                                  value={u.role}
+                                  disabled={isSelf}
+                                  onChange={e => handleChangeRole(u.id, e.target.value as UserRole)}
+                                  className="text-xs px-2 py-1 border border-border rounded-lg bg-background text-foreground disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                >
+                                  <option value="admin">admin</option>
+                                  <option value="teacher">teacher</option>
+                                  <option value="mature_student">mature_student</option>
+                                  <option value="school_student">school_student</option>
+                                </select>
+                                <button
+                                  onClick={() => isEditing ? setEditingUserId(null) : openEditUser(u)}
+                                  className={`p-1.5 rounded-lg transition-colors ${isEditing ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+                                  title="Edit name / password"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleToggleDisable(u.id, u.disabled)}
+                                  disabled={isSelf}
+                                  className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${u.disabled ? 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20' : 'text-muted-foreground hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20'}`}
+                                  title={u.disabled ? 'Re-enable account' : 'Disable account'}
+                                >
+                                  {u.disabled ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteUser(u.id)}
+                                  disabled={isSelf}
+                                  className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                  title={isSelf ? 'Cannot delete your own account' : 'Delete user'}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          {isEditing && (
+                            <tr key={`${u.id}-edit`} className="bg-muted/20 border-b border-border">
+                              <td colSpan={4} className="px-4 py-3">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <input
+                                    type="text"
+                                    value={editName}
+                                    onChange={e => setEditName(e.target.value)}
+                                    placeholder="Display name"
+                                    className="px-3 py-1.5 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 w-44"
+                                  />
+                                  <input
+                                    type="password"
+                                    value={editPassword}
+                                    onChange={e => setEditPassword(e.target.value)}
+                                    placeholder="New password (optional)"
+                                    className="px-3 py-1.5 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 w-52"
+                                  />
+                                  {editError && <span className="text-xs text-red-500">{editError}</span>}
+                                  <button
+                                    onClick={() => handleSaveEdit(u.id)}
+                                    disabled={editSaving || (!editName.trim() && !editPassword)}
+                                    className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                                  >
+                                    {editSaving ? 'Saving…' : 'Save'}
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingUserId(null)}
+                                    className="px-3 py-1.5 border border-border rounded-lg text-xs text-muted-foreground hover:bg-muted transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </>
                       )
                     })}
                   </tbody>
