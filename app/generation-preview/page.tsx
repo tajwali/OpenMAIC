@@ -791,7 +791,15 @@ function GenerationPreviewContent() {
       // on the current device while the upload runs asynchronously.
       const _scenesToSave = store.scenes;
       const _stageId = stage.id;
-      const _title = stage.name;
+      // Use first scene title as the fallback title hint for the server-side
+      // generateCourseTitle() call. stage.name = extractTopicFromRequirement()
+      // which is the raw requirement text — too long to use as a course title.
+      const _firstSceneTitle = (_scenesToSave?.[0] as { title?: string; name?: string } | undefined)?.title
+        || (_scenesToSave?.[0] as { title?: string; name?: string } | undefined)?.name
+        || '';
+      const _title = _firstSceneTitle.trim().length > 3
+        ? _firstSceneTitle.trim().slice(0, 80)
+        : stage.name.slice(0, 80);
       const _topic = currentSession.requirements.requirement ?? '';
       const _grade = currentSession.requirements.grade ?? null;
       const _subjectId = currentSession.requirements.subjectId ?? null;

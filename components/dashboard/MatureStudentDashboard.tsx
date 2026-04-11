@@ -387,7 +387,7 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
 
 function CourseCard({ classroom, onClick, onDelete }: { classroom: Classroom; onClick: () => void; onDelete: () => void }) {
   const date = new Date(classroom.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-  const displayTitle = classroom.short_title ?? classroom.title
+  const displayTitle = (classroom.short_title ?? classroom.title ?? '').slice(0, 60)
   return (
     <div className="relative group bg-card border border-border rounded-xl p-5 hover:border-primary/50 hover:shadow-md transition-all">
       <button
