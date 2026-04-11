@@ -54,11 +54,19 @@ const WEB_SEARCH_STORAGE_KEY = 'webSearchEnabled';
 const LANGUAGE_STORAGE_KEY = 'generationLanguage';
 const RECENT_OPEN_STORAGE_KEY = 'recentClassroomsOpen';
 
+interface Subject {
+  id: string;
+  name: string;
+  icon: string;
+}
+
 interface FormState {
   pdfFile: File | null;
   requirement: string;
   language: 'zh-CN' | 'en-US';
   webSearch: boolean;
+  grade: string; // 'none' | 'all' | 'Grade 1' ... 'Grade 10'
+  subjectId: string; // 'auto' | uuid
 }
 
 const initialFormState: FormState = {
@@ -66,6 +74,8 @@ const initialFormState: FormState = {
   requirement: '',
   language: 'zh-CN',
   webSearch: false,
+  grade: 'none',
+  subjectId: 'auto',
 };
 
 function HomePage() {
@@ -124,6 +134,7 @@ function HomePage() {
     }
   }
 
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [languageOpen, setLanguageOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -190,6 +201,12 @@ function HomePage() {
 
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Store hydration on mount
     loadClassrooms();
+
+    // Load subjects for the selector
+    fetch('/api/subjects')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: Subject[]) => setSubjects(data))
+      .catch(() => {});
   }, []);
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
@@ -284,6 +301,8 @@ function HomePage() {
         userNickname: userProfile.nickname || undefined,
         userBio: userProfile.bio || undefined,
         webSearch: form.webSearch || undefined,
+        grade: form.grade !== 'none' ? form.grade : null,
+        subjectId: form.subjectId !== 'auto' ? form.subjectId : null,
       };
 
       let pdfStorageKey: string | undefined;
@@ -571,6 +590,31 @@ function HomePage() {
               onKeyDown={handleKeyDown}
               rows={4}
             />
+
+            {/* Grade + Subject selectors */}
+            <div className="px-4 pb-2 flex flex-wrap items-center gap-2 border-t border-border/30 pt-2">
+              <select
+                value={form.grade}
+                onChange={(e) => updateForm('grade', e.target.value as FormState['grade'])}
+                className="text-xs rounded-lg border border-border bg-background px-2.5 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 cursor-pointer"
+              >
+                <option value="none">No grade</option>
+                <option value="all">All Grades</option>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((g) => (
+                  <option key={g} value={`Grade ${g}`}>Grade {g}</option>
+                ))}
+              </select>
+              <select
+                value={form.subjectId}
+                onChange={(e) => updateForm('subjectId', e.target.value as FormState['subjectId'])}
+                className="text-xs rounded-lg border border-border bg-background px-2.5 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 cursor-pointer"
+              >
+                <option value="auto">Auto-detect subject</option>
+                {subjects.map((s) => (
+                  <option key={s.id} value={s.id}>{s.icon} {s.name}</option>
+                ))}
+              </select>
+            </div>
 
             {/* Toolbar row */}
             <div className="px-3 pb-3 flex items-end gap-2">

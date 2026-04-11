@@ -14,6 +14,7 @@ interface Classroom {
   subject_id: string | null
   subject_name: string | null
   subject_icon: string | null
+  grade: string | null
   completed?: boolean
 }
 
@@ -402,6 +403,11 @@ function CourseCard({ classroom, onClick, onDelete }: { classroom: Classroom; on
             <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium">
               {classroom.status}
             </span>
+            {classroom.grade && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium">
+                {classroom.grade}
+              </span>
+            )}
             {classroom.completed && (
               <span title="Completed" className="text-green-500">
                 <CheckCircle className="w-3.5 h-3.5" />

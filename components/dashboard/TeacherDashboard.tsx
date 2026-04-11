@@ -22,6 +22,9 @@ interface Course {
   topic: string
   status: string
   created_at: string
+  grade: string | null
+  subject_name: string | null
+  subject_icon: string | null
 }
 
 interface Assignment {
@@ -339,9 +342,21 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
                   <div key={c.id} className="bg-card border border-border rounded-xl p-4 flex items-center justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-foreground truncate">{c.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {new Date(c.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(c.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </p>
+                        {c.grade && (
+                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                            {c.grade}
+                          </span>
+                        )}
+                        {c.subject_name && (
+                          <span className="text-xs text-muted-foreground">
+                            {c.subject_icon} {c.subject_name}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <button

@@ -793,6 +793,8 @@ function GenerationPreviewContent() {
       const _stageId = stage.id;
       const _title = stage.name;
       const _topic = currentSession.requirements.requirement ?? '';
+      const _grade = currentSession.requirements.grade ?? null;
+      const _subjectId = currentSession.requirements.subjectId ?? null;
       void (async () => {
         try {
           const { uploadMediaAndReplace } = await import('@/lib/utils/upload-media');
@@ -805,6 +807,8 @@ function GenerationPreviewContent() {
               title: _title,
               topic: _topic,
               scenes: scenesWithUrls,
+              grade: _grade,
+              subjectId: _subjectId,
             }),
           });
         } catch {

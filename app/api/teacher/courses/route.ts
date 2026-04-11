@@ -21,13 +21,28 @@ export async function GET() {
 
     const { data, error } = await admin
       .from('classrooms')
-      .select('id, title, topic, status, created_at')
+      .select('id, title, topic, status, created_at, grade, subject_id, subjects(name, icon)')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    return NextResponse.json(data ?? [])
+    const mapped = (data ?? []).map((c: Record<string, unknown>) => {
+      const subjectRow = c.subjects as { name: string; icon: string } | null
+      return {
+        id: c.id,
+        title: c.title,
+        topic: c.topic,
+        status: c.status,
+        created_at: c.created_at,
+        grade: c.grade ?? null,
+        subject_id: c.subject_id ?? null,
+        subject_name: subjectRow?.name ?? null,
+        subject_icon: subjectRow?.icon ?? null,
+      }
+    })
+
+    return NextResponse.json(mapped)
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Internal error' }, { status: 500 })
   }

@@ -15,8 +15,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await req.json() as { id?: string; title?: string; topic?: string; scenes?: unknown };
-    const { id, title, topic, scenes } = body;
+    const body = await req.json() as {
+      id?: string;
+      title?: string;
+      topic?: string;
+      scenes?: unknown;
+      grade?: string | null;
+      subjectId?: string | null;
+    };
+    const { id, title, topic, scenes, grade, subjectId } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'Missing required field: id' }, { status: 400 });
@@ -38,6 +45,9 @@ export async function POST(req: Request) {
     const shortTitle = (sceneOutlineTitles[0] ?? requirement).slice(0, 60) || null;
     log.info(`Course title for ${id}: "${finalTitle}"`);
 
+    // Use provided subjectId or fall back to AI classification (done below)
+    const manualSubjectId = subjectId ?? null;
+
     const admin = getSupabaseAdmin();
     const { error } = await admin.from('classrooms').upsert({
       id,
@@ -47,24 +57,30 @@ export async function POST(req: Request) {
       topic: requirement.slice(0, 500),
       scenes: scenes ?? [],
       status: 'complete',
+      grade: grade ?? null,
+      subject_id: manualSubjectId,
     }, { onConflict: 'id' });
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Background: classify subject and update the row (fire-and-forget)
-    void (async () => {
-      try {
-        const subjectId = await classifySubject(finalTitle, requirement);
-        log.info(`Subject classification for ${id}: ${subjectId ?? 'null (unclassified)'}`);
-        if (subjectId) {
-          await admin.from('classrooms').update({ subject_id: subjectId }).eq('id', id);
+    // If no subject was manually chosen, classify in background
+    if (!manualSubjectId) {
+      void (async () => {
+        try {
+          const classifiedId = await classifySubject(finalTitle, requirement);
+          log.info(`Subject classification for ${id}: ${classifiedId ?? 'null (unclassified)'}`);
+          if (classifiedId) {
+            await admin.from('classrooms').update({ subject_id: classifiedId }).eq('id', id);
+          }
+        } catch (err) {
+          log.warn(`Background subject classification failed for ${id}:`, err instanceof Error ? err.message : String(err));
         }
-      } catch (err) {
-        log.warn(`Background subject classification failed for ${id}:`, err instanceof Error ? err.message : String(err));
-      }
-    })();
+      })();
+    } else {
+      log.info(`Subject manually set for ${id}: ${manualSubjectId}`);
+    }
 
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (err) {
@@ -87,7 +103,7 @@ export async function GET() {
     const admin = getSupabaseAdmin();
     const { data, error } = await admin
       .from('classrooms')
-      .select('id, title, short_title, topic, status, created_at, subject_id, subjects(name, icon)')
+      .select('id, title, short_title, topic, status, created_at, subject_id, grade, subjects(name, icon)')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
@@ -107,6 +123,7 @@ export async function GET() {
         subject_id: c.subject_id ?? null,
         subject_name: subjectRow?.name ?? null,
         subject_icon: subjectRow?.icon ?? null,
+        grade: c.grade ?? null,
       }
     })
 

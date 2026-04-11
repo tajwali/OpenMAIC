@@ -68,6 +68,8 @@ export interface UserRequirements {
   userNickname?: string; // Student nickname for personalization
   userBio?: string; // Student background for personalization
   webSearch?: boolean; // Enable web search for richer context
+  grade?: string | null; // Grade level e.g. "Grade 7", "All Grades", or null
+  subjectId?: string | null; // Manually chosen subject UUID, or null for auto-detect
 }
 
 /**
