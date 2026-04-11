@@ -19,7 +19,7 @@ const securityHeaders = [
       "img-src 'self' blob: data: https:",
       "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://generativelanguage.googleapis.com https://openrouter.ai https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://unpkg.com",
-      "media-src 'self' blob:",
+      "media-src 'self' blob: data:",
       "frame-ancestors 'none'",
     ].join('; '),
   },
