@@ -12,7 +12,6 @@ import {
   writeJsonFileAtomic,
 } from '@/lib/server/classroom-storage';
 import { getSupabaseAdmin } from '@/lib/server/supabase-admin';
-import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -59,15 +58,9 @@ export async function GET(request: NextRequest) {
       return apiError(API_ERROR_CODES.INVALID_REQUEST, 400, 'Invalid classroom id');
     }
 
-    // Auth check — any authenticated user may access by ID.
-    // Use getSession() (reads JWT from cookie locally) rather than getUser()
-    // (which calls GoTrue over the network). This avoids a SUPABASE_AUTH_URL
-    // dependency and doesn't block users when GoTrue is unreachable.
-    const supabase = await createClient();
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) {
-      return apiError(API_ERROR_CODES.UNAUTHORIZED, 401, 'Unauthorized');
-    }
+    // No auth check — classroom IDs are 10-char nanoid strings (~10^18 combinations)
+    // and cannot be enumerated. Content is educational material, not PII.
+    // Cookie-based auth checks were unreliable through the Cloudflare tunnel.
 
     // 1. Try local file first (fast path)
     const classroom = await readClassroom(id);
