@@ -72,19 +72,13 @@ export async function GET(request: NextRequest) {
     const admin = getSupabaseAdmin();
     const { data: row, error: dbError } = await admin
       .from('classrooms')
-      .select('id, title, created_at, language, agent_ids, scenes')
+      .select('id, title, created_at, scenes')
       .eq('id', id)
       .single();
 
-    if (dbError) {
-      console.error('[classroom] DB query error for', id, '— code:', dbError.code, 'msg:', dbError.message, 'details:', dbError.details);
+    if (dbError || !row) {
       return apiError(API_ERROR_CODES.INVALID_REQUEST, 404, 'Classroom not found');
     }
-    if (!row) {
-      console.error('[classroom] No row returned for id:', id);
-      return apiError(API_ERROR_CODES.INVALID_REQUEST, 404, 'Classroom not found');
-    }
-    console.error('[classroom] Row found for', id, '— scenes type:', typeof row.scenes, 'length:', Array.isArray(row.scenes) ? (row.scenes as unknown[]).length : 'N/A (not array)', 'raw:', JSON.stringify(row.scenes)?.slice(0, 120));
     if (!row.scenes || (row.scenes as unknown[]).length === 0) {
       return apiError(API_ERROR_CODES.INVALID_REQUEST, 404, 'Course has no content');
     }
@@ -98,8 +92,8 @@ export async function GET(request: NextRequest) {
         name: (row.title as string | null) ?? '',
         createdAt: new Date(row.created_at as string).getTime(),
         updatedAt: Date.now(),
-        language: (row.language as string | null) ?? 'en-US',
-        agentIds: (row.agent_ids as string[] | null) ?? [],
+        language: 'en-US',
+        agentIds: [],
       },
       scenes: row.scenes as unknown[],
       createdAt: row.created_at as string,
