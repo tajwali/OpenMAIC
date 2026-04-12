@@ -789,8 +789,8 @@ function GenerationPreviewContent() {
       // Upload media blobs to server and save to DB in background.
       // This never blocks navigation — images stay visible from IndexedDB/store
       // on the current device while the upload runs asynchronously.
-      const _scenesToSave = store.scenes;
       const _stageId = stage.id;
+      const _scenesToSave = store.scenes.map(s => ({ ...s, stageId: _stageId }));
       // Use first scene title as the fallback title hint for the server-side
       // generateCourseTitle() call. stage.name = extractTopicFromRequirement()
       // which is the raw requirement text — too long to use as a course title.

@@ -73,12 +73,12 @@ export async function GET(request: NextRequest) {
     const admin = getSupabaseAdmin();
     const { data: row, error: dbError } = await admin
       .from('classrooms')
-      .select('id, title, topic, scenes, status, created_at')
+      .select('id, title, created_at, language, agent_ids, scenes')
       .eq('id', id)
       .single();
 
-    if (dbError || !row || !row.scenes) {
-      return apiError(API_ERROR_CODES.INVALID_REQUEST, 404, 'Classroom not found');
+    if (dbError || !row || !row.scenes || (row.scenes as unknown[]).length === 0) {
+      return apiError(API_ERROR_CODES.INVALID_REQUEST, 404, 'Course has no content');
     }
 
     // Reconstruct the shape readClassroom() returns so the client gets
@@ -87,9 +87,11 @@ export async function GET(request: NextRequest) {
       id: row.id as string,
       stage: {
         id: row.id as string,
-        name: (row.title as string | null) ?? (row.topic as string | null) ?? '',
-        topic: (row.topic as string | null) ?? '',
-        status: (row.status as string | null) ?? 'complete',
+        name: (row.title as string | null) ?? '',
+        createdAt: new Date(row.created_at as string).getTime(),
+        updatedAt: Date.now(),
+        language: (row.language as string | null) ?? 'en-US',
+        agentIds: (row.agent_ids as string[] | null) ?? [],
       },
       scenes: row.scenes as unknown[],
       createdAt: row.created_at as string,
