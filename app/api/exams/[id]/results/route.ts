@@ -17,7 +17,7 @@ export async function POST(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const body = JSON.parse(await req.text()) as {
+    const body = await req.json() as {
       answers?: SubmittedAnswer[]
       time_taken_seconds?: number
     }

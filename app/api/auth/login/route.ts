@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const { email, password } = JSON.parse(await request.text())
+    const { email, password } = await request.json()
 
     // Per-email rate limit prevents targeted brute-force even if IP is spoofed
     if (email) {

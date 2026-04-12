@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
     const auth = await requireRole(['admin'])
     if ('error' in auth) return auth.error
 
-    const body = JSON.parse(await req.text()) as { email?: string; password?: string; displayName?: string }
+    const body = await req.json() as { email?: string; password?: string; displayName?: string }
     if (!body.email?.trim()) return NextResponse.json({ error: 'email is required' }, { status: 400 })
     if (!body.password || body.password.length < 6) return NextResponse.json({ error: 'password must be at least 6 characters' }, { status: 400 })
     if (!body.displayName?.trim()) return NextResponse.json({ error: 'displayName is required' }, { status: 400 })
@@ -116,7 +116,7 @@ export async function PATCH(req: NextRequest) {
     const auth = await requireRole(['admin'])
     if ('error' in auth) return auth.error
 
-    const body = JSON.parse(await req.text()) as {
+    const body = await req.json() as {
       user_id?: string
       new_role?: string
       display_name?: string

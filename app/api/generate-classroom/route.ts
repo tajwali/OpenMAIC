@@ -14,7 +14,7 @@ export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
   try {
-    const rawBody = (JSON.parse(await req.text())) as Partial<GenerateClassroomInput>;
+    const rawBody = (await req.json()) as Partial<GenerateClassroomInput>;
     const body: GenerateClassroomInput = {
       requirement: rawBody.requirement || '',
       ...(rawBody.pdfContent ? { pdfContent: rawBody.pdfContent } : {}),

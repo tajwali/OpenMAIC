@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const body = JSON.parse(await req.text()) as {
+    const body = await req.json() as {
       classroom_ids?: string[]
       num_questions?: number
       difficulty?: string

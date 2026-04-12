@@ -11,7 +11,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = JSON.parse(await request.text()) as {
+    const body = await request.json() as {
       classroom_id?: string
       scene_id?: string
       score?: number

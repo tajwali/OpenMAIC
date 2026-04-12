@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = JSON.parse(await request.text()) as { classroom_id?: string }
+    const body = await request.json() as { classroom_id?: string }
     const { classroom_id } = body
 
     if (!classroom_id) {
@@ -66,7 +66,7 @@ export async function PATCH(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const body = JSON.parse(await request.text()) as {
+    const body = await request.json() as {
       classroom_id?: string
       completed?: boolean
       last_scene_id?: string

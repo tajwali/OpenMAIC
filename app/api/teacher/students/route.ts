@@ -92,7 +92,7 @@ export async function PATCH(req: NextRequest) {
     const auth = await requireRole(['teacher'])
     if ('error' in auth) return auth.error
 
-    const body = JSON.parse(await req.text()) as {
+    const body = await req.json() as {
       student_id?: string
       display_name?: string
       grade?: string

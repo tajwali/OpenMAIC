@@ -19,7 +19,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const body = JSON.parse(await request.text()) as {
+    const body = await request.json() as {
       classroom_id?: string
       student_ids?: string[]
     }

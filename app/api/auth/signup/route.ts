@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const body = JSON.parse(await request.text()) as {
+  let body: {
     email?: string
     password?: string
     displayName?: string
@@ -37,6 +37,11 @@ export async function POST(request: Request) {
     inviteCode?: string
     grade?: string
     school?: string
+  }
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
   const { email, password, displayName, role = 'mature_student', inviteCode, grade, school } = body

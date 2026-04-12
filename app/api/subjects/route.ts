@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     const auth = await requireRole(['admin', 'teacher'])
     if ('error' in auth) return auth.error
 
-    const body = JSON.parse(await req.text()) as { name?: string; icon?: string; description?: string }
+    const body = await req.json() as { name?: string; icon?: string; description?: string }
     if (!body.name?.trim()) return NextResponse.json({ error: 'name is required' }, { status: 400 })
 
     const admin = getSupabaseAdmin()
