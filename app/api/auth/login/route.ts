@@ -6,7 +6,12 @@ import { checkRateLimit } from '@/lib/server/rate-limit'
 function makeAuthFetch() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const authUrl = process.env.SUPABASE_AUTH_URL
-  if (!authUrl) return undefined
+  // SUPABASE_AUTH_URL must be set — without it auth requests go to Kong which has no
+  // /auth/v1 route and returns "404 page not found", causing a cryptic JSON parse error.
+  if (!authUrl) {
+    console.error('[login] SUPABASE_AUTH_URL is not set — auth will fail. Check .env.local is copied to .next/standalone/')
+    return undefined
+  }
   return (url: RequestInfo | URL, options?: RequestInit) => {
     const urlStr = url.toString()
     if (urlStr.startsWith(supabaseUrl + '/auth/v1')) {

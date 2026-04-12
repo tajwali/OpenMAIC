@@ -7,7 +7,10 @@ import { checkRateLimit } from '@/lib/server/rate-limit'
 function makeAuthFetch() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const authUrl = process.env.SUPABASE_AUTH_URL
-  if (!authUrl) return undefined
+  if (!authUrl) {
+    console.error('[signup] SUPABASE_AUTH_URL is not set — auth will fail. Check .env.local is copied to .next/standalone/')
+    return undefined
+  }
   return (url: RequestInfo | URL, options?: RequestInit) => {
     const urlStr = url.toString()
     if (urlStr.startsWith(supabaseUrl + '/auth/v1')) {
