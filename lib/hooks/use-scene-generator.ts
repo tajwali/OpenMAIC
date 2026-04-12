@@ -388,6 +388,17 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
             store.getState().addScene(scene);
             options.onSceneGenerated?.(scene, outline.order);
             previousSpeeches = actionsResult.previousSpeeches || [];
+
+            // Incremental save — fire-and-forget, never blocks generation
+            const _incStage = store.getState().stage;
+            const _incScenes = store.getState().scenes;
+            if (_incStage) {
+              void fetch(`/api/user/classrooms/${_incStage.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scenes: _incScenes }),
+              }).catch(() => {});
+            }
           } else {
             if (abortRef.current || store.getState().generationEpoch !== startEpoch) {
               pausedByFailureOrAbort = true;
@@ -518,6 +529,17 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
 
         removeGeneratingOutline();
         store.getState().addScene(actionsResult.scene);
+
+        // Incremental save after retry — fire-and-forget
+        const _retryStage = store.getState().stage;
+        const _retryScenes = store.getState().scenes;
+        if (_retryStage) {
+          void fetch(`/api/user/classrooms/${_retryStage.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scenes: _retryScenes }),
+          }).catch(() => {});
+        }
 
         // Resume remaining generation if there are pending outlines
         if (store.getState().generatingOutlines.length > 0 && lastParamsRef.current) {

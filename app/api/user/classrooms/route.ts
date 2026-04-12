@@ -22,8 +22,10 @@ export async function POST(req: Request) {
       scenes?: unknown;
       grade?: string | null;
       subjectId?: string | null;
+      /** init: true skips LLM title generation — used for the early placeholder upsert */
+      init?: boolean;
     };
-    const { id, title, topic, scenes, grade, subjectId } = body;
+    const { id, title, topic, scenes, grade, subjectId, init } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'Missing required field: id' }, { status: 400 });
@@ -39,11 +41,20 @@ export async function POST(req: Request) {
       }
     }
 
-    // Generate a clean LLM title; fall back to provided title or topic
-    const generatedTitle = await generateCourseTitle(requirement, sceneOutlineTitles);
-    const finalTitle = (generatedTitle || title || requirement || 'Untitled Course').slice(0, 100);
-    const shortTitle = (sceneOutlineTitles[0] ?? requirement).slice(0, 60) || null;
-    log.info(`Course title for ${id}: "${finalTitle}"`);
+    // init=true: placeholder upsert at generation start — skip LLM to avoid blocking generation
+    // Final save (init=false/undefined) runs LLM title generation with real scene titles
+    let finalTitle: string;
+    let shortTitle: string | null;
+    if (init) {
+      finalTitle = (title || requirement || 'Untitled Course').slice(0, 100);
+      shortTitle = requirement.slice(0, 60) || null;
+      log.info(`Course placeholder created for ${id}: "${finalTitle}"`);
+    } else {
+      const generatedTitle = await generateCourseTitle(requirement, sceneOutlineTitles);
+      finalTitle = (generatedTitle || title || requirement || 'Untitled Course').slice(0, 100);
+      shortTitle = (sceneOutlineTitles[0] ?? requirement).slice(0, 60) || null;
+      log.info(`Course title for ${id}: "${finalTitle}"`);
+    }
 
     // Use provided subjectId or fall back to AI classification (done below)
     const manualSubjectId = subjectId ?? null;
@@ -65,8 +76,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // If no subject was manually chosen, classify in background
-    if (!manualSubjectId) {
+    // If no subject was manually chosen, classify in background (skip for init placeholders)
+    if (!init && !manualSubjectId) {
       void (async () => {
         try {
           const classifiedId = await classifySubject(finalTitle, requirement);

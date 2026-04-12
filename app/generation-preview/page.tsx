@@ -364,6 +364,23 @@ function GenerationPreviewContent() {
 
       // Create stage client-side (needed for agent generation stageId)
       const stageId = nanoid(10);
+
+      // Create placeholder classroom row immediately so incremental PATCH calls have
+      // a target row. init=true skips the LLM title call so this doesn't block generation.
+      void fetch('/api/user/classrooms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: stageId,
+          title: currentSession.requirements.requirement.slice(0, 80) || 'Untitled Course',
+          topic: currentSession.requirements.requirement,
+          scenes: [],
+          grade: currentSession.requirements.grade ?? null,
+          subjectId: currentSession.requirements.subjectId ?? null,
+          init: true,
+        }),
+      }).catch(() => {});
+
       const stage: Stage = {
         id: stageId,
         name: extractTopicFromRequirement(currentSession.requirements.requirement),
@@ -769,6 +786,13 @@ function GenerationPreviewContent() {
       // Add scene to store and navigate
       store.addScene(data.scene);
       store.setCurrentSceneId(data.scene.id);
+
+      // Incremental save of scene 1 — fire-and-forget
+      void fetch(`/api/user/classrooms/${stageId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scenes: useStageStore.getState().scenes }),
+      }).catch(() => {});
 
       // Set remaining outlines as skeleton placeholders
       const remaining = outlines.filter((o) => o.order !== data.scene.order);
