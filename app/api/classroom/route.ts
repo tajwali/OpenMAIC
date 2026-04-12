@@ -1,12 +1,18 @@
 import { type NextRequest } from 'next/server';
 import { randomUUID } from 'crypto';
+import { promises as fs } from 'fs';
+import path from 'path';
 import { apiSuccess, apiError, API_ERROR_CODES } from '@/lib/server/api-response';
 import {
   buildRequestOrigin,
   isValidClassroomId,
   persistClassroom,
   readClassroom,
+  CLASSROOMS_DIR,
+  writeJsonFileAtomic,
 } from '@/lib/server/classroom-storage';
+import { getSupabaseAdmin } from '@/lib/server/supabase-admin';
+import { requireAuth } from '@/lib/server/require-role';
 
 export async function POST(request: NextRequest) {
   try {
@@ -53,12 +59,52 @@ export async function GET(request: NextRequest) {
       return apiError(API_ERROR_CODES.INVALID_REQUEST, 400, 'Invalid classroom id');
     }
 
+    // Auth check — any authenticated user may access by ID
+    const auth = await requireAuth();
+    if ('error' in auth) return auth.error;
+
+    // 1. Try local file first (fast path)
     const classroom = await readClassroom(id);
-    if (!classroom) {
+    if (classroom) {
+      return apiSuccess({ classroom });
+    }
+
+    // 2. File not found — fall back to Supabase DB
+    const admin = getSupabaseAdmin();
+    const { data: row, error: dbError } = await admin
+      .from('classrooms')
+      .select('id, title, topic, scenes, status, created_at')
+      .eq('id', id)
+      .single();
+
+    if (dbError || !row || !row.scenes) {
       return apiError(API_ERROR_CODES.INVALID_REQUEST, 404, 'Classroom not found');
     }
 
-    return apiSuccess({ classroom });
+    // Reconstruct the shape readClassroom() returns so the client gets
+    // the same response format whether data came from file or DB.
+    const dbClassroom = {
+      id: row.id as string,
+      stage: {
+        id: row.id as string,
+        name: (row.title as string | null) ?? (row.topic as string | null) ?? '',
+        topic: (row.topic as string | null) ?? '',
+        status: (row.status as string | null) ?? 'complete',
+      },
+      scenes: row.scenes as unknown[],
+      createdAt: row.created_at as string,
+    };
+
+    // 3. Cache to local file so future requests hit the fast path
+    try {
+      await fs.mkdir(CLASSROOMS_DIR, { recursive: true });
+      const filePath = path.join(CLASSROOMS_DIR, `${id}.json`);
+      await writeJsonFileAtomic(filePath, dbClassroom);
+    } catch {
+      // Cache write failure is non-fatal
+    }
+
+    return apiSuccess({ classroom: dbClassroom });
   } catch (error) {
     return apiError(
       API_ERROR_CODES.INTERNAL_ERROR,
