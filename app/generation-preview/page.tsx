@@ -750,7 +750,7 @@ function GenerationPreviewContent() {
               ttsVoice: settings.ttsVoice,
               ttsSpeed: settings.ttsSpeed,
               ttsApiKey: ttsProviderConfig?.apiKey,
-              ttsBaseUrl: ttsProviderConfig?.baseUrl,
+              ttsBaseUrl: ttsProviderConfig?.baseUrl || ttsProviderConfig?.customDefaultBaseUrl,
               signal,
             });
             action.audioId = `tts_${action.id}`;
