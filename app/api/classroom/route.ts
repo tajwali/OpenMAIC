@@ -12,7 +12,7 @@ import {
   writeJsonFileAtomic,
 } from '@/lib/server/classroom-storage';
 import { getSupabaseAdmin } from '@/lib/server/supabase-admin';
-import { requireAuth } from '@/lib/server/require-role';
+import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -59,9 +59,14 @@ export async function GET(request: NextRequest) {
       return apiError(API_ERROR_CODES.INVALID_REQUEST, 400, 'Invalid classroom id');
     }
 
-    // Auth check — any authenticated user may access by ID
-    const auth = await requireAuth();
-    if ('error' in auth) return auth.error;
+    // Auth check — any authenticated user may access by ID.
+    // Use a direct JWT check rather than requireAuth() so that users with a
+    // missing or null role in user_profiles are not incorrectly blocked.
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return apiError(API_ERROR_CODES.UNAUTHORIZED, 401, 'Unauthorized');
+    }
 
     // 1. Try local file first (fast path)
     const classroom = await readClassroom(id);

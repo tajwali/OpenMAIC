@@ -41,7 +41,7 @@ export default function ClassroomDetailPage() {
       if (!useStageStore.getState().stage) {
         log.info('No IndexedDB data, trying server-side storage for:', classroomId);
         try {
-          const res = await fetch(`/api/classroom?id=${encodeURIComponent(classroomId)}`);
+          const res = await fetch(`/api/classroom?id=${encodeURIComponent(classroomId)}`, { credentials: 'include' });
           if (res.ok) {
             const json = await res.json();
             if (json.success && json.classroom) {
