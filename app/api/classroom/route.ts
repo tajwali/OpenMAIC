@@ -60,11 +60,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Auth check — any authenticated user may access by ID.
-    // Use a direct JWT check rather than requireAuth() so that users with a
-    // missing or null role in user_profiles are not incorrectly blocked.
+    // Use getSession() (reads JWT from cookie locally) rather than getUser()
+    // (which calls GoTrue over the network). This avoids a SUPABASE_AUTH_URL
+    // dependency and doesn't block users when GoTrue is unreachable.
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) {
       return apiError(API_ERROR_CODES.UNAUTHORIZED, 401, 'Unauthorized');
     }
 
