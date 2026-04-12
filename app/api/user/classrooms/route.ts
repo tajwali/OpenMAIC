@@ -73,6 +73,7 @@ export async function POST(req: Request) {
     }, { onConflict: 'id' });
 
     if (error) {
+      log.error(`Classroom upsert failed for ${id}:`, error.message, error.code, error.details);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -95,6 +96,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (err) {
+    log.error('POST /api/user/classrooms unhandled error:', err instanceof Error ? err.message : String(err));
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Internal error' },
       { status: 500 },
