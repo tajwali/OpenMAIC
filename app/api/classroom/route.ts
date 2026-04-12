@@ -76,7 +76,16 @@ export async function GET(request: NextRequest) {
       .eq('id', id)
       .single();
 
-    if (dbError || !row || !row.scenes || (row.scenes as unknown[]).length === 0) {
+    if (dbError) {
+      console.error('[classroom] DB query error for', id, '— code:', dbError.code, 'msg:', dbError.message, 'details:', dbError.details);
+      return apiError(API_ERROR_CODES.INVALID_REQUEST, 404, 'Classroom not found');
+    }
+    if (!row) {
+      console.error('[classroom] No row returned for id:', id);
+      return apiError(API_ERROR_CODES.INVALID_REQUEST, 404, 'Classroom not found');
+    }
+    console.error('[classroom] Row found for', id, '— scenes type:', typeof row.scenes, 'length:', Array.isArray(row.scenes) ? (row.scenes as unknown[]).length : 'N/A (not array)', 'raw:', JSON.stringify(row.scenes)?.slice(0, 120));
+    if (!row.scenes || (row.scenes as unknown[]).length === 0) {
       return apiError(API_ERROR_CODES.INVALID_REQUEST, 404, 'Course has no content');
     }
 
