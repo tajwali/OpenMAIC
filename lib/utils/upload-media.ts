@@ -96,7 +96,12 @@ export async function uploadMediaAndReplace(
 
     if (!blob || blob.size === 0) continue;
 
-    const filename = `img_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    // Use the element ID as the filename for generated media to ensure consistency
+    // with background uploads initiated by the media orchestrator.
+    const filename = isMediaPlaceholder(src)
+      ? `${src}.${ext}`
+      : `img_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+
     const form = new FormData();
     form.append('classroomId', stageId);
     form.append('subdir', 'media');

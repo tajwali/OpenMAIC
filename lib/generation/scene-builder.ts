@@ -34,10 +34,15 @@ const log = createLogger('Generation');
 export function uniquifyMediaElementIds(outlines: SceneOutline[]): SceneOutline[] {
   const idMap = new Map<string, string>();
 
-  // First pass: collect all sequential media IDs and assign unique replacements
+  // First pass: collect all sequential media IDs and assign unique replacements.
+  // Sequential IDs are typically short (e.g. gen_img_1). Uniquified IDs contain
+  // a nanoid(8) and are longer.
   for (const outline of outlines) {
     if (!outline.mediaGenerations) continue;
     for (const mg of outline.mediaGenerations) {
+      // If it's already uniquified (contains a long random suffix), skip it
+      if (mg.elementId.length > 12) continue;
+
       if (!idMap.has(mg.elementId)) {
         const prefix = mg.type === 'video' ? 'gen_vid_' : 'gen_img_';
         idMap.set(mg.elementId, `${prefix}${nanoid(8)}`);
