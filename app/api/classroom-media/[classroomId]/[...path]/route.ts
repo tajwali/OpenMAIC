@@ -44,12 +44,22 @@ export async function GET(
   }
 
   const filePath = path.join(CLASSROOMS_DIR, classroomId, ...pathSegments);
-  const resolvedBase = path.resolve(CLASSROOMS_DIR, classroomId);
 
   try {
     // Resolve symlinks and verify the real path stays within the classroom dir
     const realPath = await fs.realpath(filePath);
-    if (!realPath.startsWith(resolvedBase + path.sep) && realPath !== resolvedBase) {
+
+    // Resolve base path through symlinks too, otherwise the prefix check fails
+    // if CLASSROOMS_DIR is a symlink or contains one.
+    let realBase: string;
+    try {
+      realBase = await fs.realpath(path.join(CLASSROOMS_DIR, classroomId));
+    } catch {
+      // Fallback if base doesn't exist yet (though realPath resolution would have failed)
+      realBase = path.resolve(CLASSROOMS_DIR, classroomId);
+    }
+
+    if (!realPath.startsWith(realBase + path.sep) && realPath !== realBase) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
