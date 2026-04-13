@@ -73,6 +73,54 @@ export async function POST(request: Request) {
   }
 }
 
+export async function DELETE(request: Request) {
+  try {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const admin = getSupabaseAdmin()
+    const { data: profile } = await admin
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.role !== 'teacher' && profile?.role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const body = await request.json() as {
+      classroom_id?: string
+      student_id?: string
+    }
+    const { classroom_id, student_id } = body
+
+    if (!classroom_id || !student_id) {
+      return NextResponse.json({ error: 'Missing classroom_id or student_id' }, { status: 400 })
+    }
+
+    let query = admin
+      .from('course_assignments')
+      .delete()
+      .eq('classroom_id', classroom_id)
+      .eq('assigned_to', student_id)
+
+    // Admins can unassign any course; teachers can only unassign their own
+    if (profile.role !== 'admin') {
+      query = query.eq('assigned_by', user.id)
+    }
+
+    const { error } = await query
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Internal error' }, { status: 500 })
+  }
+}
+
 export async function GET() {
   try {
     const supabase = await createClient()

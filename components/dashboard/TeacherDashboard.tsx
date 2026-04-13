@@ -91,6 +91,7 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
   const [profileSuccess, setProfileSuccess] = useState(false)
+  const [unassigningId, setUnassigningId] = useState<string | null>(null)
   // Student edit modal
   const [editingStudent, setEditingStudent] = useState<Student | null>(null)
   const [editStudentName, setEditStudentName] = useState('')
@@ -118,6 +119,22 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
+
+  const unassignCourse = async (assignment: Assignment) => {
+    setUnassigningId(assignment.id)
+    try {
+      const res = await fetch('/api/teacher/assign-course', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classroom_id: assignment.classroom_id, student_id: assignment.student_id }),
+      })
+      if (res.ok) {
+        setAssignments(prev => prev.filter(a => a.id !== assignment.id))
+      }
+    } finally {
+      setUnassigningId(null)
+    }
+  }
 
   const loadExamResults = () => {
     setExamResultsLoading(true)
@@ -499,7 +516,8 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
                     <tr className="border-b border-border bg-muted/50">
                       <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Course</th>
                       <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Student</th>
-                      <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Assigned</th>
+                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Assigned</th>
+                      <th className="px-4 py-2.5" />
                     </tr>
                   </thead>
                   <tbody>
@@ -507,8 +525,17 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
                       <tr key={a.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
                         <td className="px-4 py-3 text-foreground truncate max-w-[200px]">{a.classroom_title}</td>
                         <td className="px-4 py-3 text-muted-foreground">{a.student_name}</td>
-                        <td className="px-4 py-3 text-right text-xs text-muted-foreground">
+                        <td className="px-4 py-3 text-xs text-muted-foreground">
                           {new Date(a.assigned_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => unassignCourse(a)}
+                            disabled={unassigningId === a.id}
+                            className="px-3 py-1 rounded-md text-xs font-medium text-destructive border border-destructive/40 hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                          >
+                            {unassigningId === a.id ? 'Removing…' : 'Unassign'}
+                          </button>
                         </td>
                       </tr>
                     ))}
