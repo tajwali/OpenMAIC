@@ -148,10 +148,41 @@ async function generateSingleMedia(
       createdAt: Date.now(),
     });
 
-    // Update store with object URL
-    const objectUrl = URL.createObjectURL(blob);
+    // Update store with object URL (instant local availability)
+    const localObjectUrl = URL.createObjectURL(blob);
     const posterObjectUrl = posterBlob ? URL.createObjectURL(posterBlob) : undefined;
-    useMediaGenerationStore.getState().markDone(req.elementId, objectUrl, posterObjectUrl);
+    useMediaGenerationStore.getState().markDone(req.elementId, localObjectUrl, posterObjectUrl);
+
+    // Background upload for cross-device persistence
+    if (req.type === 'image') {
+      const ext = mimeType.split('/')[1] || 'png';
+      const filename = `${req.elementId}.${ext}`;
+      const serverUrl = `/api/classroom-media/${stageId}/media/${filename}`;
+
+      const formData = new FormData();
+      formData.append('classroomId', stageId);
+      formData.append('subdir', 'media');
+      formData.append('filename', filename);
+      formData.append('file', blob, filename);
+
+      // Fire-and-forget upload
+      void fetch('/api/user/classrooms/media', {
+        method: 'POST',
+        body: formData,
+      })
+        .then((res) => {
+          if (res.ok) {
+            // Update store with permanent server URL so it gets picked up by incremental saves
+            useMediaGenerationStore.getState().markDone(req.elementId, serverUrl, posterObjectUrl);
+            log.info(`Uploaded generated image ${req.elementId} -> ${serverUrl}`);
+          } else {
+            log.warn(`Upload failed for ${req.elementId}: HTTP ${res.status}`);
+          }
+        })
+        .catch((err) => {
+          log.warn(`Background upload failed for ${req.elementId}:`, err);
+        });
+    }
   } catch (err) {
     if (abortSignal?.aborted) return;
     const message = err instanceof Error ? err.message : String(err);
