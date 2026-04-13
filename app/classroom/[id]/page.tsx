@@ -37,8 +37,8 @@ export default function ClassroomDetailPage() {
     try {
       await loadFromStorage(classroomId);
 
-      // If IndexedDB had no data, try server-side storage (API-generated classrooms)
-      if (!useStageStore.getState().stage) {
+      // If IndexedDB had no data (or loaded the wrong stage), try server-side storage
+      if (!useStageStore.getState().stage || useStageStore.getState().stage?.id !== classroomId) {
         log.info('No IndexedDB data, trying server-side storage for:', classroomId);
         try {
           const res = await fetch(`/api/classroom?id=${encodeURIComponent(classroomId)}`, { credentials: 'include' });
@@ -103,6 +103,11 @@ export default function ClassroomDetailPage() {
     setError(null);
     generationStartedRef.current = false;
     completionFiredRef.current = false;
+
+    // Clear the stage store so stale data from a previous classroom never bleeds in.
+    // loadFromStorage silently leaves the store untouched when IndexedDB has no entry
+    // (API-generated courses), which caused the previous classroom to stay visible.
+    useStageStore.getState().clearStore();
 
     // Clear previous classroom's media tasks to prevent cross-classroom contamination.
     // Placeholder IDs (gen_img_1, gen_vid_1) are NOT globally unique across stages,
