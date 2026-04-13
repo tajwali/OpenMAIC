@@ -221,13 +221,11 @@ async function handleIssueComplete(
         if (data.success && data.message) {
           nextIssue.generated_questions = data.message;
 
-          // Add Question Agent welcome message
+          // Use LLM-generated content directly (already in the correct language)
           config.chat.messages.push({
             id: `msg_${Date.now()}_welcome`,
             agent_name: nextIssue.question_agent_name,
-            message: t('pbl.chat.welcomeMessage')
-              .replace('{title}', nextIssue.title)
-              .replace('{questions}', data.message),
+            message: data.message,
             timestamp: Date.now(),
             read_by: [],
           });
@@ -236,13 +234,11 @@ async function handleIssueComplete(
         log.error('[usePBLChat] Failed to generate questions for next issue:', error);
       }
     } else if (questionAgent && nextIssue.generated_questions) {
-      // Questions already exist, just add welcome message
+      // Questions already exist, use directly
       config.chat.messages.push({
         id: `msg_${Date.now()}_welcome`,
         agent_name: nextIssue.question_agent_name,
-        message: t('pbl.chat.welcomeMessage')
-          .replace('{title}', nextIssue.title)
-          .replace('{questions}', nextIssue.generated_questions),
+        message: nextIssue.generated_questions,
         timestamp: Date.now(),
         read_by: [],
       });

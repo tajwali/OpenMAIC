@@ -75,6 +75,7 @@ async function fetchSceneContent(
       style?: string;
     };
     agents?: AgentInfo[];
+    languageDirective?: string;
   },
   signal?: AbortSignal,
 ): Promise<SceneContentResult> {
@@ -101,6 +102,7 @@ async function fetchSceneActions(
     agents?: AgentInfo[];
     previousSpeeches?: string[];
     userProfile?: string;
+    languageDirective?: string;
   },
   signal?: AbortSignal,
 ): Promise<SceneActionsResult> {
@@ -115,6 +117,7 @@ async function fetchSceneActions(
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
 
 /** Generate TTS for one speech action and store in IndexedDB */
 export async function generateAndStoreTTS(
@@ -166,7 +169,6 @@ export async function generateAndStoreTTS(
     format: data.format,
     createdAt: Date.now(),
   });
-}
 }
 
 /** Generate TTS for all speech actions in a scene. Returns result. */
@@ -238,6 +240,7 @@ export interface GenerationParams {
   };
   agents?: AgentInfo[];
   userProfile?: string;
+  languageDirective?: string;
 }
 
 export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
@@ -331,6 +334,7 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
               imageMapping: params.imageMapping,
               stageInfo: params.stageInfo,
               agents: params.agents,
+              languageDirective: params.languageDirective,
             },
             signal,
           );
@@ -364,6 +368,7 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
               agents: params.agents,
               previousSpeeches,
               userProfile: params.userProfile,
+              languageDirective: params.languageDirective,
             },
             signal,
           );
@@ -491,6 +496,7 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
             imageMapping: params.imageMapping,
             stageInfo: params.stageInfo,
             agents: params.agents,
+            languageDirective: params.languageDirective,
           },
           signal,
         );
@@ -518,6 +524,7 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
             agents: params.agents,
             previousSpeeches,
             userProfile: params.userProfile,
+            languageDirective: params.languageDirective,
           },
           signal,
         );

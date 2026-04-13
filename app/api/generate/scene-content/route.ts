@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
           stageInfo,
           stageId,
           agents,
+          languageDirective,
         } = body as {
           outline: SceneOutline;
           allOutlines: SceneOutline[];
@@ -70,6 +71,7 @@ export async function POST(req: NextRequest) {
           };
           stageId: string;
           agents?: AgentInfo[];
+          languageDirective?: string;
         };
 
         // Validate required fields
@@ -181,12 +183,15 @@ export async function POST(req: NextRequest) {
         const content = await generateSceneContent(
           effectiveOutline,
           aiCall,
-          assignedImages,
-          imageMapping,
-          effectiveOutline.type === 'pbl' ? languageModel : undefined,
-          hasVision,
-          generatedMediaMapping,
-          agents,
+          {
+            assignedImages,
+            imageMapping,
+            languageModel: effectiveOutline.type === 'pbl' ? languageModel : undefined,
+            visionEnabled: hasVision,
+            generatedMediaMapping,
+            agents,
+            languageDirective,
+          },
         );
 
         stopKeepAlive();

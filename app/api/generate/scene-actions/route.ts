@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
           agents,
           previousSpeeches: incomingPreviousSpeeches,
           userProfile,
+          languageDirective,
         } = body as {
           outline: SceneOutline;
           allOutlines: SceneOutline[];
@@ -77,6 +78,7 @@ export async function POST(req: NextRequest) {
           agents?: AgentInfo[];
           previousSpeeches?: string[];
           userProfile?: string;
+          languageDirective?: string;
         };
 
         // Validate required fields
@@ -180,9 +182,7 @@ export async function POST(req: NextRequest) {
           outline,
           content,
           aiCall,
-          ctx,
-          agents,
-          userProfile,
+          { ctx, agents, userProfile, languageDirective },
         );
 
         stopKeepAlive();
