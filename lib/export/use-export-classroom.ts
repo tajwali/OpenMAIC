@@ -5,7 +5,7 @@ import { saveAs } from 'file-saver';
 import { toast } from 'sonner';
 import { useStageStore } from '@/lib/store/stage';
 import { useI18n } from '@/lib/hooks/use-i18n';
-import { db, getGeneratedAgentsByStageId } from '@/lib/utils/database';
+import { getGeneratedAgentsByStageId } from '@/lib/utils/database';
 import {
   CLASSROOM_ZIP_FORMAT_VERSION,
   CLASSROOM_ZIP_EXTENSION,
@@ -36,28 +36,24 @@ export function useExportClassroom() {
       const JSZip = (await import('jszip')).default;
       const zip = new JSZip();
 
-      // 1. Read latest stage name from IndexedDB (may have been renamed on home page)
-      const freshStage = await db.stages.get(stage.id);
-      const latestName = freshStage?.name || stage.name;
-
-      // 2. Collect agents from DB
+      // 1. Collect agents from DB
       const agentRecords = await getGeneratedAgentsByStageId(stage.id);
 
-      // 3. Collect audio files
+      // 2. Collect audio files
       const audioFiles = await collectAudioFiles(scenes);
 
-      // 4. Collect media files (generated images/videos)
+      // 3. Collect media files (generated images/videos)
       const mediaFiles = await collectMediaFiles(stage.id);
 
-      // 5. Build audioId → zipPath mapping for manifest
+      // 4. Build audioId → zipPath mapping for manifest
       const audioIdToPath = new Map<string, string>();
       for (const af of audioFiles) {
         audioIdToPath.set(af.record.id, af.zipPath);
       }
 
-      // 6. Build manifest
+      // 5. Build manifest
       const manifestStage: ManifestStage = {
-        name: latestName,
+        name: stage.name,
         description: stage.description,
         language: stage.languageDirective,
         style: stage.style,
@@ -115,7 +111,7 @@ export function useExportClassroom() {
           : {}),
       }));
 
-      // 7. Build mediaIndex
+      // 6. Build mediaIndex
       const mediaIndex: Record<string, MediaIndexEntry> = {};
 
       for (const af of audioFiles) {
@@ -148,7 +144,7 @@ export function useExportClassroom() {
         }
       }
 
-      // 8. Assemble manifest
+      // 7. Assemble manifest
       const manifest: ClassroomManifest = {
         formatVersion: CLASSROOM_ZIP_FORMAT_VERSION,
         exportedAt: new Date().toISOString(),
@@ -161,7 +157,7 @@ export function useExportClassroom() {
 
       zip.file('manifest.json', JSON.stringify(manifest, null, 2));
 
-      // 9. Add media blobs to ZIP
+      // 8. Add media blobs to ZIP
       for (const af of audioFiles) {
         zip.file(af.zipPath, af.record.blob);
       }
@@ -172,9 +168,9 @@ export function useExportClassroom() {
         }
       }
 
-      // 10. Generate and download
+      // 9. Generate and download
       const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const safeName = latestName.replace(/[\\/:*?"<>|]/g, '_') || 'classroom';
+      const safeName = stage.name.replace(/[\\/:*?"<>|]/g, '_') || 'classroom';
       saveAs(zipBlob, `${safeName}${CLASSROOM_ZIP_EXTENSION}`);
 
       toast.success(t('export.exportSuccess'), { id: toastId });
