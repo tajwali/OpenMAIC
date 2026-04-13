@@ -739,6 +739,7 @@ function GenerationPreviewContent() {
 
       // Generate TTS for first scene (part of actions step — blocking)
       if (settings.ttsEnabled && settings.ttsProviderId !== 'browser-native-tts') {
+        const { generateAndUploadTTS } = await import('@/lib/audio/tts-client');
         const ttsProviderConfig = settings.ttsProvidersConfig?.[settings.ttsProviderId];
         const speechActions = (data.scene.actions || []).filter(
           (a: { type: string; text?: string }) => a.type === 'speech' && a.text,
@@ -746,45 +747,20 @@ function GenerationPreviewContent() {
 
         let ttsFailCount = 0;
         for (const action of speechActions) {
-          const audioId = `tts_${action.id}`;
-          action.audioId = audioId;
           try {
-            const resp = await fetch('/api/generate/tts', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                text: action.text,
-                audioId,
-                ttsProviderId: settings.ttsProviderId,
-                ttsModelId: ttsProviderConfig?.modelId,
-                ttsVoice: settings.ttsVoice,
-                ttsSpeed: settings.ttsSpeed,
-                ttsApiKey: ttsProviderConfig?.apiKey || undefined,
-                ttsBaseUrl: ttsProviderConfig?.baseUrl || undefined,
-              }),
+            const audioUrl = await generateAndUploadTTS(stageId, action.id, action.text, {
+              ttsProviderId: settings.ttsProviderId,
+              ttsModelId: ttsProviderConfig?.modelId,
+              ttsVoice: settings.ttsVoice,
+              ttsSpeed: settings.ttsSpeed,
+              ttsApiKey: ttsProviderConfig?.apiKey,
+              ttsBaseUrl: ttsProviderConfig?.baseUrl,
               signal,
             });
-            if (!resp.ok) {
-              ttsFailCount++;
-              continue;
-            }
-            const ttsData = await resp.json();
-            if (!ttsData.success) {
-              ttsFailCount++;
-              continue;
-            }
-            const binary = atob(ttsData.base64);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            const blob = new Blob([bytes], { type: `audio/${ttsData.format}` });
-            await db.audioFiles.put({
-              id: audioId,
-              blob,
-              format: ttsData.format,
-              createdAt: Date.now(),
-            });
+            action.audioId = `tts_${action.id}`;
+            action.audioUrl = audioUrl;
           } catch (err) {
-            log.warn(`[TTS] Failed for ${audioId}:`, err);
+            log.warn(`[TTS] Failed for ${action.id}:`, err);
             ttsFailCount++;
           }
         }

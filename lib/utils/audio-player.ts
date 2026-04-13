@@ -30,9 +30,9 @@ export class AudioPlayer {
    * @returns true if audio started playing, false if no audio (TTS disabled or not generated)
    */
   public async play(audioId: string, audioUrl?: string): Promise<boolean> {
-    try {
-      // 1. Try audioUrl first (server-generated TTS)
-      if (audioUrl) {
+    // 1. Try audioUrl first (server-generated TTS)
+    if (audioUrl) {
+      try {
         this.stop();
         this.audio = new Audio();
         this.audio.src = audioUrl;
@@ -46,8 +46,13 @@ export class AudioPlayer {
         await this.audio.play();
         this.audio.playbackRate = this.playbackRate;
         return true;
+      } catch (error) {
+        log.warn(`Server audioUrl failed, falling back to IndexedDB: ${audioUrl}`, error);
+        // Fall through to IndexedDB path
       }
+    }
 
+    try {
       // 2. Fall back to IndexedDB (client-generated TTS)
       const audioRecord = await db.audioFiles.get(audioId);
 
