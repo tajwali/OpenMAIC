@@ -50,66 +50,106 @@ function stripCodeFences(text: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  try {
-    const body = (await req.json()) as RequestBody;
-    const {
-      stageInfo,
-      sceneOutlines,
-      language,
-      availableAvatars,
-      avatarDescriptions,
-      availableVoices,
-    } = body;
+  const encoder = new TextEncoder();
+  const KEEPALIVE_INTERVAL_MS = 5_000;
 
-    // ── Validate required fields ──
-    if (!stageInfo?.name) {
-      return apiError('MISSING_REQUIRED_FIELD', 400, 'stageInfo.name is required');
-    }
-    if (!language) {
-      return apiError('MISSING_REQUIRED_FIELD', 400, 'language is required');
-    }
-    if (!availableAvatars || availableAvatars.length === 0) {
-      return apiError(
-        'MISSING_REQUIRED_FIELD',
-        400,
-        'availableAvatars is required and must not be empty',
-      );
-    }
+  const stream = new ReadableStream({
+    async start(controller) {
+      let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+      const startKeepAlive = () => {
+        keepAliveTimer = setInterval(() => {
+          try {
+            controller.enqueue(encoder.encode(': keepalive\n\n'));
+          } catch {
+            if (keepAliveTimer) clearInterval(keepAliveTimer);
+          }
+        }, KEEPALIVE_INTERVAL_MS);
+      };
 
-    // ── Model resolution from request headers ──
-    const { model: languageModel, modelString } = resolveModelFromHeaders(req);
+      const stopKeepAlive = () => {
+        if (keepAliveTimer) {
+          clearInterval(keepAliveTimer);
+          keepAliveTimer = null;
+        }
+      };
 
-    // ── Build prompt ──
-    const sceneSummary = sceneOutlines?.length
-      ? sceneOutlines
-          .map((s, i) => `${i + 1}. ${s.title}${s.description ? ` — ${s.description}` : ''}`)
-          .join('\n')
-      : null;
+      try {
+        const body = (await req.json()) as RequestBody;
+        const {
+          stageInfo,
+          sceneOutlines,
+          language,
+          availableAvatars,
+          avatarDescriptions,
+          availableVoices,
+        } = body;
 
-    const systemPrompt = `You are an expert instructional designer. Generate agent profiles for a multi-agent classroom simulation. Decide the appropriate number of agents (typically 3-5) based on the course content and complexity. Return ONLY valid JSON, no markdown or explanation.`;
+        // ── Validate required fields ──
+        if (!stageInfo?.name) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ error: 'stageInfo.name is required', status: 400 })}\n\n`,
+            ),
+          );
+          controller.close();
+          return;
+        }
+        if (!language) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ error: 'language is required', status: 400 })}\n\n`,
+            ),
+          );
+          controller.close();
+          return;
+        }
+        if (!availableAvatars || availableAvatars.length === 0) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                error: 'availableAvatars is required and must not be empty',
+                status: 400,
+              })}\n\n`,
+            ),
+          );
+          controller.close();
+          return;
+        }
 
-    // Build voice list for prompt (if available)
-    const voiceListStr =
-      availableVoices && availableVoices.length > 0
-        ? JSON.stringify(
-            availableVoices.map((v) => ({
-              id: `${v.providerId}::${v.voiceId}`,
-              name: v.voiceName,
-            })),
-          )
-        : '';
+        // ── Model resolution from request headers ──
+        const { model: languageModel, modelString } = resolveModelFromHeaders(req);
 
-    const voicePrompt = voiceListStr
-      ? `- Each agent should be assigned a voice that matches their persona from this list: ${voiceListStr}
+        // ── Build prompt ──
+        const sceneSummary = sceneOutlines?.length
+          ? sceneOutlines
+              .map((s, i) => `${i + 1}. ${s.title}${s.description ? ` — ${s.description}` : ''}`)
+              .join('\n')
+          : null;
+
+        const systemPrompt = `You are an expert instructional designer. Generate agent profiles for a multi-agent classroom simulation. Decide the appropriate number of agents (typically 3-5) based on the course content and complexity. Return ONLY valid JSON, no markdown or explanation.`;
+
+        // Build voice list for prompt (if available)
+        const voiceListStr =
+          availableVoices && availableVoices.length > 0
+            ? JSON.stringify(
+                availableVoices.map((v) => ({
+                  id: `${v.providerId}::${v.voiceId}`,
+                  name: v.voiceName,
+                })),
+              )
+            : '';
+
+        const voicePrompt = voiceListStr
+          ? `- Each agent should be assigned a voice that matches their persona from this list: ${voiceListStr}
   - Pick a voice that suits the agent's personality and role (e.g. authoritative voice for teacher, lively voice for energetic student)
   - Try to use different voices for each agent`
-      : '';
+          : '';
 
-    const voiceJsonField = voiceListStr
-      ? ',\n      "voice": "string (voice id from available list, e.g. \'qwen-tts::Cherry\')"'
-      : '';
+        const voiceJsonField = voiceListStr
+          ? ',\n      "voice": "string (voice id from available list, e.g. \'qwen-tts::Cherry\')"'
+          : '';
 
-    const userPrompt = `Generate agent profiles for the following course:
+        const userPrompt = `Generate agent profiles for the following course:
 
 Course name: ${stageInfo.name}
 ${stageInfo.description ? `Course description: ${stageInfo.description}` : ''}
@@ -142,87 +182,132 @@ Return a JSON object with this exact structure:
   ]
 }`;
 
-    log.info(`Generating agent profiles for "${stageInfo.name}" [model=${modelString}]`);
+        log.info(`Generating agent profiles for "${stageInfo.name}" [model=${modelString}]`);
 
-    const result = await callLLM(
-      {
-        model: languageModel,
-        system: systemPrompt,
-        prompt: userPrompt,
-      },
-      'agent-profiles',
-    );
+        startKeepAlive();
 
-    // ── Parse LLM response ──
-    const rawText = stripCodeFences(result.text);
-    let parsed: {
-      agents: Array<{
-        name: string;
-        role: string;
-        persona: string;
-        avatar: string;
-        color: string;
-        priority: number;
-        voice?: string;
-      }>;
-    };
+        const result = await callLLM(
+          {
+            model: languageModel,
+            system: systemPrompt,
+            prompt: userPrompt,
+          },
+          'agent-profiles',
+        );
 
-    try {
-      parsed = JSON.parse(rawText);
-    } catch {
-      log.error('Failed to parse LLM response as JSON:', rawText.substring(0, 500));
-      return apiError('PARSE_FAILED', 500, 'Failed to parse agent profiles from LLM response');
-    }
+        stopKeepAlive();
 
-    // ── Validate parsed structure ──
-    if (!parsed.agents || !Array.isArray(parsed.agents) || parsed.agents.length < 2) {
-      log.error(`Expected at least 2 agents, got ${parsed.agents?.length ?? 0}`);
-      return apiError(
-        'GENERATION_FAILED',
-        500,
-        `Expected at least 2 agents but LLM returned ${parsed.agents?.length ?? 0}`,
-      );
-    }
+        // ── Parse LLM response ──
+        const rawText = stripCodeFences(result.text);
+        let parsed: {
+          agents: Array<{
+            name: string;
+            role: string;
+            persona: string;
+            avatar: string;
+            color: string;
+            priority: number;
+            voice?: string;
+          }>;
+        };
 
-    const teacherCount = parsed.agents.filter((a) => a.role === 'teacher').length;
-    if (teacherCount !== 1) {
-      log.error(`Expected exactly 1 teacher, got ${teacherCount}`);
-      return apiError(
-        'GENERATION_FAILED',
-        500,
-        `Expected exactly 1 teacher but LLM returned ${teacherCount}`,
-      );
-    }
-
-    // ── Build output with IDs ──
-    const agents = parsed.agents.map((agent, index) => {
-      // Parse voice "providerId::voiceId" format
-      let voiceConfig: { providerId: string; voiceId: string } | undefined;
-      if (agent.voice && agent.voice.includes('::')) {
-        const [providerId, voiceId] = agent.voice.split('::');
-        if (providerId && voiceId) {
-          voiceConfig = { providerId, voiceId };
+        try {
+          parsed = JSON.parse(rawText);
+        } catch {
+          log.error('Failed to parse LLM response as JSON:', rawText.substring(0, 500));
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                error: 'Failed to parse agent profiles from LLM response',
+                status: 500,
+              })}\n\n`,
+            ),
+          );
+          controller.close();
+          return;
         }
+
+        // ── Validate parsed structure ──
+        if (!parsed.agents || !Array.isArray(parsed.agents) || parsed.agents.length < 2) {
+          log.error(`Expected at least 2 agents, got ${parsed.agents?.length ?? 0}`);
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                error: `Expected at least 2 agents but LLM returned ${parsed.agents?.length ?? 0}`,
+                status: 500,
+              })}\n\n`,
+            ),
+          );
+          controller.close();
+          return;
+        }
+
+        const teacherCount = parsed.agents.filter((a) => a.role === 'teacher').length;
+        if (teacherCount !== 1) {
+          log.error(`Expected exactly 1 teacher, got ${teacherCount}`);
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                error: `Expected exactly 1 teacher but LLM returned ${teacherCount}`,
+                status: 500,
+              })}\n\n`,
+            ),
+          );
+          controller.close();
+          return;
+        }
+
+        // ── Build output with IDs ──
+        const agents = parsed.agents.map((agent, index) => {
+          // Parse voice "providerId::voiceId" format
+          let voiceConfig: { providerId: string; voiceId: string } | undefined;
+          if (agent.voice && agent.voice.includes('::')) {
+            const [providerId, voiceId] = agent.voice.split('::');
+            if (providerId && voiceId) {
+              voiceConfig = { providerId, voiceId };
+            }
+          }
+
+          return {
+            id: `gen-${nanoid(8)}`,
+            name: agent.name,
+            role: agent.role,
+            persona: agent.persona,
+            avatar: agent.avatar || availableAvatars[index % availableAvatars.length],
+            color: agent.color || COLOR_PALETTE[index % COLOR_PALETTE.length],
+            priority:
+              agent.priority ??
+              (agent.role === 'teacher' ? 10 : agent.role === 'assistant' ? 7 : 5),
+            ...(voiceConfig ? { voiceConfig } : {}),
+          };
+        });
+
+        log.info(`Successfully generated ${agents.length} agent profiles for "${stageInfo.name}"`);
+
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ success: true, agents })}\n\n`));
+      } catch (error) {
+        log.error('Agent profiles generation error:', error);
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              error: error instanceof Error ? error.message : String(error),
+              status: 500,
+            })}\n\n`,
+          ),
+        );
+      } finally {
+        stopKeepAlive();
+        controller.close();
       }
+    },
+  });
 
-      return {
-        id: `gen-${nanoid(8)}`,
-        name: agent.name,
-        role: agent.role,
-        persona: agent.persona,
-        avatar: agent.avatar || availableAvatars[index % availableAvatars.length],
-        color: agent.color || COLOR_PALETTE[index % COLOR_PALETTE.length],
-        priority:
-          agent.priority ?? (agent.role === 'teacher' ? 10 : agent.role === 'assistant' ? 7 : 5),
-        ...(voiceConfig ? { voiceConfig } : {}),
-      };
-    });
-
-    log.info(`Successfully generated ${agents.length} agent profiles for "${stageInfo.name}"`);
-
-    return apiSuccess({ agents });
-  } catch (error) {
-    log.error('Agent profiles generation error:', error);
-    return apiError('INTERNAL_ERROR', 500, error instanceof Error ? error.message : String(error));
-  }
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  });
 }
+

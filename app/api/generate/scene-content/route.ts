@@ -24,144 +24,217 @@ const log = createLogger('Scene Content API');
 export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const {
-      outline: rawOutline,
-      allOutlines,
-      pdfImages,
-      imageMapping,
-      stageInfo,
-      stageId,
-      agents,
-    } = body as {
-      outline: SceneOutline;
-      allOutlines: SceneOutline[];
-      pdfImages?: PdfImage[];
-      imageMapping?: ImageMapping;
-      stageInfo: {
-        name: string;
-        description?: string;
-        language?: string;
-        style?: string;
+  const encoder = new TextEncoder();
+  const KEEPALIVE_INTERVAL_MS = 5_000;
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+      const startKeepAlive = () => {
+        keepAliveTimer = setInterval(() => {
+          try {
+            controller.enqueue(encoder.encode(': keepalive\n\n'));
+          } catch {
+            if (keepAliveTimer) clearInterval(keepAliveTimer);
+          }
+        }, KEEPALIVE_INTERVAL_MS);
       };
-      stageId: string;
-      agents?: AgentInfo[];
-    };
 
-    // Validate required fields
-    if (!rawOutline) {
-      return apiError('MISSING_REQUIRED_FIELD', 400, 'outline is required');
-    }
-    if (!allOutlines || allOutlines.length === 0) {
-      return apiError(
-        'MISSING_REQUIRED_FIELD',
-        400,
-        'allOutlines is required and must not be empty',
-      );
-    }
-    if (!stageId) {
-      return apiError('MISSING_REQUIRED_FIELD', 400, 'stageId is required');
-    }
+      const stopKeepAlive = () => {
+        if (keepAliveTimer) {
+          clearInterval(keepAliveTimer);
+          keepAliveTimer = null;
+        }
+      };
 
-    // Ensure outline has language from stageInfo (fallback for older outlines)
-    const outline: SceneOutline = {
-      ...rawOutline,
-      language: rawOutline.language || (stageInfo?.language as 'zh-CN' | 'en-US') || 'zh-CN',
-    };
+      try {
+        const body = await req.json();
+        const {
+          outline: rawOutline,
+          allOutlines,
+          pdfImages,
+          imageMapping,
+          stageInfo,
+          stageId,
+          agents,
+        } = body as {
+          outline: SceneOutline;
+          allOutlines: SceneOutline[];
+          pdfImages?: PdfImage[];
+          imageMapping?: ImageMapping;
+          stageInfo: {
+            name: string;
+            description?: string;
+            language?: string;
+            style?: string;
+          };
+          stageId: string;
+          agents?: AgentInfo[];
+        };
 
-    // ── Model resolution from request headers ──
-    const { model: languageModel, modelInfo, modelString } = resolveModelFromHeaders(req);
+        // Validate required fields
+        if (!rawOutline) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ error: 'outline is required', status: 400 })}\n\n`,
+            ),
+          );
+          controller.close();
+          return;
+        }
+        if (!allOutlines || allOutlines.length === 0) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                error: 'allOutlines is required and must not be empty',
+                status: 400,
+              })}\n\n`,
+            ),
+          );
+          controller.close();
+          return;
+        }
+        if (!stageId) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ error: 'stageId is required', status: 400 })}\n\n`,
+            ),
+          );
+          controller.close();
+          return;
+        }
 
-    // Detect vision capability
-    const hasVision = !!modelInfo?.capabilities?.vision;
+        // Ensure outline has language from stageInfo (fallback for older outlines)
+        const outline: SceneOutline = {
+          ...rawOutline,
+          language: rawOutline.language || (stageInfo?.language as 'zh-CN' | 'en-US') || 'zh-CN',
+        };
 
-    // Vision-aware AI call function
-    const aiCall = async (
-      systemPrompt: string,
-      userPrompt: string,
-      images?: Array<{ id: string; src: string }>,
-    ): Promise<string> => {
-      if (images?.length && hasVision) {
-        const result = await callLLM(
-          {
-            model: languageModel,
-            system: systemPrompt,
-            messages: [
+        // ── Model resolution from request headers ──
+        const { model: languageModel, modelInfo, modelString } = resolveModelFromHeaders(req);
+
+        // Detect vision capability
+        const hasVision = !!modelInfo?.capabilities?.vision;
+
+        // Vision-aware AI call function
+        const aiCall = async (
+          systemPrompt: string,
+          userPrompt: string,
+          images?: Array<{ id: string; src: string }>,
+        ): Promise<string> => {
+          if (images?.length && hasVision) {
+            const result = await callLLM(
               {
-                role: 'user' as const,
-                content: buildVisionUserContent(userPrompt, images),
+                model: languageModel,
+                system: systemPrompt,
+                messages: [
+                  {
+                    role: 'user' as const,
+                    content: buildVisionUserContent(userPrompt, images),
+                  },
+                ],
+                maxOutputTokens: modelInfo?.outputWindow,
               },
-            ],
-            maxOutputTokens: modelInfo?.outputWindow,
-          },
-          'scene-content',
+              'scene-content',
+            );
+            return result.text;
+          }
+          const result = await callLLM(
+            {
+              model: languageModel,
+              system: systemPrompt,
+              prompt: userPrompt,
+              maxOutputTokens: modelInfo?.outputWindow,
+            },
+            'scene-content',
+          );
+          return result.text;
+        };
+
+        // ── Apply fallbacks ──
+        const effectiveOutline = applyOutlineFallbacks(outline, !!languageModel);
+
+        // ── Filter images assigned to this outline ──
+        let assignedImages: PdfImage[] | undefined;
+        if (
+          pdfImages &&
+          pdfImages.length > 0 &&
+          effectiveOutline.suggestedImageIds &&
+          effectiveOutline.suggestedImageIds.length > 0
+        ) {
+          const suggestedIds = new Set(effectiveOutline.suggestedImageIds);
+          assignedImages = pdfImages.filter((img) => suggestedIds.has(img.id));
+        }
+
+        // ── Media generation is handled client-side in parallel (media-orchestrator.ts) ──
+        // The content generator receives placeholder IDs (gen_img_1, gen_vid_1) as-is.
+        // resolveImageIds() in generation-pipeline.ts will keep these placeholders in elements.
+        const generatedMediaMapping: ImageMapping = {};
+
+        // ── Generate content ──
+        log.info(
+          `Generating content: "${effectiveOutline.title}" (${effectiveOutline.type}) [model=${modelString}]`,
         );
-        return result.text;
+
+        startKeepAlive();
+
+        const content = await generateSceneContent(
+          effectiveOutline,
+          aiCall,
+          assignedImages,
+          imageMapping,
+          effectiveOutline.type === 'pbl' ? languageModel : undefined,
+          hasVision,
+          generatedMediaMapping,
+          agents,
+        );
+
+        stopKeepAlive();
+
+        if (!content) {
+          log.error(`Failed to generate content for: "${effectiveOutline.title}"`);
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                error: `Failed to generate content: ${effectiveOutline.title}`,
+                status: 500,
+              })}\n\n`,
+            ),
+          );
+          controller.close();
+          return;
+        }
+
+        log.info(`Content generated successfully: "${effectiveOutline.title}"`);
+
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ success: true, content, effectiveOutline })}\n\n`,
+          ),
+        );
+      } catch (error) {
+        log.error('Scene content generation error:', error);
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              error: error instanceof Error ? error.message : String(error),
+              status: 500,
+            })}\n\n`,
+          ),
+        );
+      } finally {
+        stopKeepAlive();
+        controller.close();
       }
-      const result = await callLLM(
-        {
-          model: languageModel,
-          system: systemPrompt,
-          prompt: userPrompt,
-          maxOutputTokens: modelInfo?.outputWindow,
-        },
-        'scene-content',
-      );
-      return result.text;
-    };
+    },
+  });
 
-    // ── Apply fallbacks ──
-    const effectiveOutline = applyOutlineFallbacks(outline, !!languageModel);
-
-    // ── Filter images assigned to this outline ──
-    let assignedImages: PdfImage[] | undefined;
-    if (
-      pdfImages &&
-      pdfImages.length > 0 &&
-      effectiveOutline.suggestedImageIds &&
-      effectiveOutline.suggestedImageIds.length > 0
-    ) {
-      const suggestedIds = new Set(effectiveOutline.suggestedImageIds);
-      assignedImages = pdfImages.filter((img) => suggestedIds.has(img.id));
-    }
-
-    // ── Media generation is handled client-side in parallel (media-orchestrator.ts) ──
-    // The content generator receives placeholder IDs (gen_img_1, gen_vid_1) as-is.
-    // resolveImageIds() in generation-pipeline.ts will keep these placeholders in elements.
-    const generatedMediaMapping: ImageMapping = {};
-
-    // ── Generate content ──
-    log.info(
-      `Generating content: "${effectiveOutline.title}" (${effectiveOutline.type}) [model=${modelString}]`,
-    );
-
-    const content = await generateSceneContent(
-      effectiveOutline,
-      aiCall,
-      assignedImages,
-      imageMapping,
-      effectiveOutline.type === 'pbl' ? languageModel : undefined,
-      hasVision,
-      generatedMediaMapping,
-      agents,
-    );
-
-    if (!content) {
-      log.error(`Failed to generate content for: "${effectiveOutline.title}"`);
-
-      return apiError(
-        'GENERATION_FAILED',
-        500,
-        `Failed to generate content: ${effectiveOutline.title}`,
-      );
-    }
-
-    log.info(`Content generated successfully: "${effectiveOutline.title}"`);
-
-    return apiSuccess({ content, effectiveOutline });
-  } catch (error) {
-    log.error('Scene content generation error:', error);
-    return apiError('INTERNAL_ERROR', 500, error instanceof Error ? error.message : String(error));
-  }
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  });
 }
+

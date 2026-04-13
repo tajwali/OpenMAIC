@@ -459,7 +459,21 @@ function GenerationPreviewContent() {
           };
 
           // No outlines yet — agent generation uses only stage name + description
-          const agentResp = await fetch('/api/generate/agent-profiles', {
+          const { fetchStreamingJson } = await import('@/lib/utils/stream-fetch');
+          const agentData = await fetchStreamingJson<{
+            success: boolean;
+            agents: Array<{
+              id: string;
+              name: string;
+              role: string;
+              persona: string;
+              avatar: string;
+              color: string;
+              priority: number;
+              voiceConfig?: { providerId: string; voiceId: string };
+            }>;
+            error?: string;
+          }>('/api/generate/agent-profiles', {
             method: 'POST',
             headers: getApiHeaders(),
             body: JSON.stringify({
@@ -472,8 +486,6 @@ function GenerationPreviewContent() {
             signal,
           });
 
-          if (!agentResp.ok) throw new Error('Agent generation failed');
-          const agentData = await agentResp.json();
           if (!agentData.success) throw new Error(agentData.error || 'Agent generation failed');
 
           // Save to IndexedDB and registry
@@ -672,7 +684,12 @@ function GenerationPreviewContent() {
       const firstOutline = outlines[0];
 
       // Step 2: Generate content (currentStepIndex is already 2)
-      const contentResp = await fetch('/api/generate/scene-content', {
+      const { fetchStreamingJson } = await import('@/lib/utils/stream-fetch');
+      const contentData = await fetchStreamingJson<{
+        success: boolean;
+        content: unknown;
+        effectiveOutline: SceneOutline;
+      }>('/api/generate/scene-content', {
         method: 'POST',
         headers: getApiHeaders(),
         body: JSON.stringify({
@@ -687,14 +704,8 @@ function GenerationPreviewContent() {
         signal,
       });
 
-      if (!contentResp.ok) {
-        const errorData = await contentResp.json().catch(() => ({ error: 'Request failed' }));
-        throw new Error(errorData.error || t('generation.sceneGenerateFailed'));
-      }
-
-      const contentData = await contentResp.json();
       if (!contentData.success || !contentData.content) {
-        throw new Error(contentData.error || t('generation.sceneGenerateFailed'));
+        throw new Error('Content generation failed');
       }
 
       // Generate actions (activate actions step indicator)

@@ -13,6 +13,7 @@ import type { TTSProviderId } from '@/lib/audio/types';
 import { splitLongSpeechActions } from '@/lib/audio/tts-utils';
 import { generateMediaForOutlines } from '@/lib/media/media-orchestrator';
 import { createLogger } from '@/lib/logger';
+import { fetchStreamingJson } from '@/lib/utils/stream-fetch';
 
 const log = createLogger('SceneGenerator');
 
@@ -77,19 +78,17 @@ async function fetchSceneContent(
   },
   signal?: AbortSignal,
 ): Promise<SceneContentResult> {
-  const response = await fetch('/api/generate/scene-content', {
-    method: 'POST',
-    headers: getApiHeaders(),
-    body: JSON.stringify(params),
-    signal,
-  });
-
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({ error: 'Request failed' }));
-    return { success: false, error: data.error || `HTTP ${response.status}` };
+  try {
+    const result = await fetchStreamingJson<SceneContentResult>('/api/generate/scene-content', {
+      method: 'POST',
+      headers: getApiHeaders(),
+      body: JSON.stringify(params),
+      signal,
+    });
+    return result;
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
-
-  return response.json();
 }
 
 /** Call POST /api/generate/scene-actions (step 2) */

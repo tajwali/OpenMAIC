@@ -33,13 +33,17 @@ export class MockApi {
     });
   }
 
-  /** Mock the scene content generation endpoint */
+  /** Mock the scene content generation endpoint (SSE) */
   async mockSceneContent(response = mockSceneContentResponse) {
     await this.page.route('**/api/generate/scene-content', (route) => {
       route.fulfill({
         status: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(response),
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        },
+        body: `data: ${JSON.stringify(response)}\n\n`,
       });
     });
   }
@@ -66,8 +70,24 @@ export class MockApi {
     });
   }
 
+  /** Mock the agent profiles generation endpoint (SSE) */
+  async mockAgentProfiles(agents = []) {
+    await this.page.route('**/api/generate/agent-profiles', (route) => {
+      route.fulfill({
+        status: 200,
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        },
+        body: `data: ${JSON.stringify({ success: true, agents })}\n\n`,
+      });
+    });
+  }
+
   /** Set up API mocks for the generation flow. Note: server-providers is already mocked by the base fixture. */
   async setupGenerationMocks(stageId = 'test-stage') {
+    await this.mockAgentProfiles([]);
     await this.mockSceneOutlinesStream();
     await this.mockSceneContent();
     await this.mockSceneActions(stageId);
