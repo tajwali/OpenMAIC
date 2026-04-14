@@ -19,9 +19,10 @@ import { useRouter } from 'next/navigation';
 import { SettingsDialog } from './settings';
 import { cn } from '@/lib/utils';
 import { useStageStore } from '@/lib/store/stage';
-import { useMediaGenerationStore } from '@/lib/store/media-generation';
+import { useMediaGenerationStore, isMediaPlaceholder } from '@/lib/store/media-generation';
 import { useExportPPTX } from '@/lib/export/use-export-pptx';
 import { retryRemainingMedia } from '@/lib/media/media-orchestrator';
+import type { PPTImageElement } from '@/lib/types/slides';
 
 interface HeaderProps {
   readonly currentSceneTitle: string;
@@ -42,6 +43,7 @@ export function Header({ currentSceneTitle }: HeaderProps) {
   const exportRef = useRef<HTMLDivElement>(null);
   const scenes = useStageStore((s) => s.scenes);
   const stage = useStageStore((s) => s.stage);
+  const outlines = useStageStore((s) => s.outlines);
   const generatingOutlines = useStageStore((s) => s.generatingOutlines);
   const failedOutlines = useStageStore((s) => s.failedOutlines);
   const mediaTasks = useMediaGenerationStore((s) => s.tasks);
@@ -50,6 +52,27 @@ export function Header({ currentSceneTitle }: HeaderProps) {
     () => Object.values(mediaTasks).filter((task) => task.status === 'failed'),
     [mediaTasks],
   );
+
+  const missingImageIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const scene of scenes) {
+      if (scene.content.type === 'slide') {
+        for (const el of scene.content.canvas.elements) {
+          if (el.type === 'image') {
+            const img = el as PPTImageElement;
+            if (isMediaPlaceholder(img.src) || img.src.startsWith('blob:')) {
+              // Check if task exists and is NOT done
+              const task = mediaTasks[img.src];
+              if (!task || task.status === 'failed' || task.status === 'pending') {
+                ids.add(img.src);
+              }
+            }
+          }
+        }
+      }
+    }
+    return Array.from(ids);
+  }, [scenes, mediaTasks]);
 
   const canExport =
     scenes.length > 0 &&
@@ -61,16 +84,46 @@ export function Header({ currentSceneTitle }: HeaderProps) {
     scenes.length > 0 &&
     generatingOutlines.length === 0 &&
     failedOutlines.length === 0 &&
-    failedMediaTasks.length > 0;
+    (failedMediaTasks.length > 0 || missingImageIds.length > 0);
 
   const handleRetryImages = async () => {
     if (retryingImages || !stage?.id) return;
     setRetryingImages(true);
     try {
-      // Retry all failed tasks for this stage
+      // 1. Enqueue missing tasks from outlines if they are not in the store
+      const missingTasksToEnqueue = [];
+      for (const elementId of missingImageIds) {
+        if (!mediaTasks[elementId]) {
+          // Find the prompt in outlines
+          for (const outline of outlines) {
+            const mg = outline.mediaGenerations?.find((m) => m.elementId === elementId);
+            if (mg) {
+              missingTasksToEnqueue.push(mg);
+              break;
+            }
+          }
+        }
+      }
+
+      if (missingTasksToEnqueue.length > 0) {
+        useMediaGenerationStore.getState().enqueueTasks(stage.id, missingTasksToEnqueue);
+      }
+
+      // 2. Mark any non-failed placeholders as failed so retryRemainingMedia picks them up
+      // (Covers cases where src is gen_img_1 but store state is missing or 'pending')
+      for (const elementId of missingImageIds) {
+        const task = useMediaGenerationStore.getState().getTask(elementId);
+        if (task && task.status !== 'failed' && task.status !== 'done') {
+          useMediaGenerationStore.getState().markFailed(elementId, 'Incomplete generation');
+        } else if (!task) {
+          // If still no task (outline not found), we can't retry it anyway
+        }
+      }
+
+      // 3. Retry all failed tasks for this stage
       await retryRemainingMedia(stage.id);
 
-      // After retrying, update the classroom in Supabase with the latest scenes (which now have permanent URLs)
+      // 4. After retrying, update the classroom in Supabase with the latest scenes (which now have permanent URLs)
       const latestScenes = useStageStore.getState().scenes;
       await fetch(`/api/user/classrooms/${stage.id}`, {
         method: 'PATCH',
