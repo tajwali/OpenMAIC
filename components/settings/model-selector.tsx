@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import type { ProviderId } from '@/lib/ai/providers';
 import type { ProvidersConfig } from '@/lib/types/settings';
-import { formatContextWindow } from './utils';
+import { createVerifyModelRequest, formatContextWindow } from './utils';
 
 interface ModelSelectorProps {
   providerId: ProviderId;
@@ -160,13 +160,16 @@ export function ModelSelector({
         const response = await fetch('/api/verify-model', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            apiKey,
-            baseUrl,
-            model: `${pid}:${mid}`,
-            providerType: providerConfig.type,
-            requiresApiKey: providerConfig.requiresApiKey,
-          }),
+          body: JSON.stringify(
+            createVerifyModelRequest({
+              providerId: pid,
+              modelId: mid,
+              apiKey,
+              baseUrl,
+              providerType: providerConfig.type,
+              requiresApiKey: providerConfig.requiresApiKey,
+            }),
+          ),
         });
 
         const data = await response.json();
