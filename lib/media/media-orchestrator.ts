@@ -128,6 +128,12 @@ async function generateSingleMedia(
 
     if (abortSignal?.aborted) return;
 
+    // If resultUrl is empty, it means we have a non-fatal failure
+    if (!resultUrl) {
+      log.warn(`[MediaOrchestrator] Empty result URL for ${req.elementId} - skipping`);
+      return;
+    }
+
     // Fetch blob from URL
     const blob = await fetchAsBlob(resultUrl);
     const posterBlob = posterUrl ? await fetchAsBlob(posterUrl).catch(() => undefined) : undefined;
@@ -243,6 +249,7 @@ async function callImageApi(
         style: req.style,
       }),
       signal: abortSignal,
+      timeoutMs: 60000, // 60s timeout for image generation
     });
 
     if (!data.success) {
@@ -255,8 +262,9 @@ async function callImageApi(
     if (!url) throw new Error('No image URL in response');
     return { url };
   } catch (err) {
-    if (err instanceof MediaApiError) throw err;
-    throw new MediaApiError(err instanceof Error ? err.message : String(err));
+    // Gracefully handle timeouts or other errors for image generation to not block the course generation
+    log.error(`[MediaOrchestrator] Image generation failed for ${req.elementId}:`, err);
+    return { url: '' };
   }
 }
 
@@ -267,34 +275,39 @@ async function callVideoApi(
   const settings = useSettingsStore.getState();
   const providerConfig = settings.videoProvidersConfig?.[settings.videoProviderId];
 
-  const response = await fetch('/api/generate/video', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-video-provider': settings.videoProviderId || '',
-      'x-video-model': settings.videoModelId || '',
-      'x-api-key': providerConfig?.apiKey || '',
-      'x-base-url': providerConfig?.baseUrl || '',
-    },
-    body: JSON.stringify({
-      prompt: req.prompt,
-      aspectRatio: req.aspectRatio,
-    }),
-    signal: abortSignal,
-  });
+  try {
+    const response = await fetch('/api/generate/video', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-video-provider': settings.videoProviderId || '',
+        'x-video-model': settings.videoModelId || '',
+        'x-api-key': providerConfig?.apiKey || '',
+        'x-base-url': providerConfig?.baseUrl || '',
+      },
+      body: JSON.stringify({
+        prompt: req.prompt,
+        aspectRatio: req.aspectRatio,
+      }),
+      signal: abortSignal,
+    });
 
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new MediaApiError(data.error || `Video API returned ${response.status}`, data.errorCode);
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new MediaApiError(data.error || `Video API returned ${response.status}`, data.errorCode);
+    }
+
+    const data = await response.json();
+    if (!data.success)
+      throw new MediaApiError(data.error || 'Video generation failed', data.errorCode);
+
+    const url = data.result?.url;
+    if (!url) throw new Error('No video URL in response');
+    return { url, poster: data.result?.poster };
+  } catch (err) {
+    log.error(`[MediaOrchestrator] Video generation failed for ${req.elementId}:`, err);
+    return { url: '' };
   }
-
-  const data = await response.json();
-  if (!data.success)
-    throw new MediaApiError(data.error || 'Video generation failed', data.errorCode);
-
-  const url = data.result?.url;
-  if (!url) throw new Error('No video URL in response');
-  return { url, poster: data.result?.poster };
 }
 
 async function fetchAsBlob(url: string): Promise<Blob> {
