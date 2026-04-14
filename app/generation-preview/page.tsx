@@ -1,6 +1,6 @@
 'use client';
 
-import { SceneActionsResult } from '@/lib/hooks/use-scene-generator';
+import { type SceneActionsResult } from '@/lib/hooks/use-scene-generator';
 import { useEffect, useState, Suspense, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
@@ -25,6 +25,7 @@ import { db } from '@/lib/utils/database';
 import { MAX_PDF_CONTENT_CHARS, MAX_VISION_IMAGES } from '@/lib/constants/generation';
 import { nanoid } from 'nanoid';
 import type { Stage } from '@/lib/types/stage';
+import type { Action, SpeechAction } from '@/lib/types/action';
 import type { SceneOutline, PdfImage, ImageMapping } from '@/lib/types/generation';
 import { AgentRevealModal } from '@/components/agent/agent-reveal-modal';
 import { createLogger } from '@/lib/logger';
@@ -728,7 +729,8 @@ function GenerationPreviewContent() {
         signal,
       });
 
-      if (!data.success || !data.scene) {
+      const scene = data.scene;
+      if (!data.success || !scene) {
         throw new Error(data.error || t('generation.sceneGenerateFailed'));
       }
 
@@ -736,8 +738,8 @@ function GenerationPreviewContent() {
       if (settings.ttsEnabled && settings.ttsProviderId !== 'browser-native-tts') {
         const { generateAndUploadTTS } = await import('@/lib/audio/tts-client');
         const ttsProviderConfig = settings.ttsProvidersConfig?.[settings.ttsProviderId];
-        const speechActions = (data.scene.actions || []).filter(
-          (a: { type: string; text?: string }) => a.type === 'speech' && a.text,
+        const speechActions = (scene.actions || []).filter(
+          (a: Action): a is SpeechAction => a.type === 'speech' && !!a.text,
         );
 
         let ttsFailCount = 0;
@@ -766,8 +768,8 @@ function GenerationPreviewContent() {
       }
 
       // Add scene to store and navigate
-      store.addScene(data.scene);
-      store.setCurrentSceneId(data.scene.id);
+      store.addScene(scene);
+      store.setCurrentSceneId(scene.id);
 
       // Incremental save of scene 1 — fire-and-forget
       void fetch(`/api/user/classrooms/${stageId}`, {
@@ -777,7 +779,7 @@ function GenerationPreviewContent() {
       }).catch(() => {});
 
       // Set remaining outlines as skeleton placeholders
-      const remaining = outlines.filter((o) => o.order !== data.scene.order);
+      const remaining = outlines.filter((o) => o.order !== scene.order);
       store.setGeneratingOutlines(remaining);
 
       // Store generation params for classroom to continue generation
