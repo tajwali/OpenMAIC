@@ -25,7 +25,7 @@ interface SceneContentResult {
   error?: string;
 }
 
-interface SceneActionsResult {
+export interface SceneActionsResult {
   success: boolean;
   scene?: Scene;
   previousSpeeches?: string[];

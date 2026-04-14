@@ -1,5 +1,6 @@
 'use client';
 
+import { SceneActionsResult } from '@/lib/hooks/use-scene-generator';
 import { useEffect, useState, Suspense, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
