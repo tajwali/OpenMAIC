@@ -712,7 +712,7 @@ function GenerationPreviewContent() {
       const actionsStepIdx = activeSteps.findIndex((s) => s.id === 'actions');
       setCurrentStepIndex(actionsStepIdx >= 0 ? actionsStepIdx : currentStepIndex + 1);
 
-      const actionsResp = await fetch('/api/generate/scene-actions', {
+      const data = await fetchStreamingJson<SceneActionsResult>('/api/generate/scene-actions', {
         method: 'POST',
         headers: getApiHeaders(),
         body: JSON.stringify({
@@ -727,12 +727,6 @@ function GenerationPreviewContent() {
         signal,
       });
 
-      if (!actionsResp.ok) {
-        const errorData = await actionsResp.json().catch(() => ({ error: 'Request failed' }));
-        throw new Error(errorData.error || t('generation.sceneGenerateFailed'));
-      }
-
-      const data = await actionsResp.json();
       if (!data.success || !data.scene) {
         throw new Error(data.error || t('generation.sceneGenerateFailed'));
       }

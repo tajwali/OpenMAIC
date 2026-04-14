@@ -28,61 +28,130 @@ const log = createLogger('ImageGeneration API');
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = (await request.json()) as ImageGenerationOptions;
+  const encoder = new TextEncoder();
+  const KEEPALIVE_INTERVAL_MS = 5_000;
 
-    if (!body.prompt) {
-      return apiError('MISSING_REQUIRED_FIELD', 400, 'Missing prompt');
-    }
+  const stream = new ReadableStream({
+    async start(controller) {
+      let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+      const startKeepAlive = () => {
+        keepAliveTimer = setInterval(() => {
+          try {
+            controller.enqueue(encoder.encode(': keepalive\n\n'));
+          } catch {
+            if (keepAliveTimer) clearInterval(keepAliveTimer);
+          }
+        }, KEEPALIVE_INTERVAL_MS);
+      };
 
-    const providerId = (request.headers.get('x-image-provider') || 'seedream') as ImageProviderId;
-    const clientApiKey = request.headers.get('x-api-key') || undefined;
-    const clientBaseUrl = request.headers.get('x-base-url') || undefined;
-    const clientModel = request.headers.get('x-image-model') || undefined;
+      const stopKeepAlive = () => {
+        if (keepAliveTimer) {
+          clearInterval(keepAliveTimer);
+          keepAliveTimer = null;
+        }
+      };
 
-    if (clientBaseUrl && process.env.NODE_ENV === 'production') {
-      const ssrfError = validateUrlForSSRF(clientBaseUrl);
-      if (ssrfError) {
-        return apiError('INVALID_URL', 403, ssrfError);
+      try {
+        const body = (await request.json()) as ImageGenerationOptions;
+
+        if (!body.prompt) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ error: 'Missing prompt', status: 400 })}\n\n`,
+            ),
+          );
+          controller.close();
+          return;
+        }
+
+        const providerId = (request.headers.get('x-image-provider') || 'seedream') as ImageProviderId;
+        const clientApiKey = request.headers.get('x-api-key') || undefined;
+        const clientBaseUrl = request.headers.get('x-base-url') || undefined;
+        const clientModel = request.headers.get('x-image-model') || undefined;
+
+        if (clientBaseUrl && process.env.NODE_ENV === 'production') {
+          const ssrfError = validateUrlForSSRF(clientBaseUrl);
+          if (ssrfError) {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ error: ssrfError, status: 403 })}\n\n`,
+              ),
+            );
+            controller.close();
+            return;
+          }
+        }
+
+        const apiKey = clientBaseUrl
+          ? clientApiKey || ''
+          : resolveImageApiKey(providerId, clientApiKey);
+        if (!apiKey) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                error: `No API key configured for image provider: ${providerId}`,
+                status: 401,
+              })}\n\n`,
+            ),
+          );
+          controller.close();
+          return;
+        }
+
+        const baseUrl = clientBaseUrl
+          ? clientBaseUrl
+          : resolveImageBaseUrl(providerId, clientBaseUrl);
+
+        // Resolve dimensions from aspect ratio if not explicitly set
+        if (!body.width && !body.height && body.aspectRatio) {
+          const dims = aspectRatioToDimensions(body.aspectRatio);
+          body.width = dims.width;
+          body.height = dims.height;
+        }
+
+        log.info(
+          `Generating image: provider=${providerId}, model=${clientModel || 'default'}, ` +
+            `prompt="${body.prompt.slice(0, 80)}...", size=${body.width ?? 'auto'}x${body.height ?? 'auto'}`,
+        );
+
+        startKeepAlive();
+
+        const result = await generateImage({ providerId, apiKey, baseUrl, model: clientModel }, body);
+
+        stopKeepAlive();
+
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ success: true, result })}\n\n`));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        // Detect content safety filter rejections (e.g. Seedream OutputImageSensitiveContentDetected)
+        if (message.includes('SensitiveContent') || message.includes('sensitive information')) {
+          log.warn(`Image blocked by content safety filter: ${message}`);
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ error: message, status: 400, errorCode: 'CONTENT_SENSITIVE' })}\n\n`,
+            ),
+          );
+        } else {
+          log.error('Image generation error:', error);
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ error: message, status: 500 })}\n\n`,
+            ),
+          );
+        }
+      } finally {
+        stopKeepAlive();
+        controller.close();
       }
-    }
+    },
+  });
 
-    const apiKey = clientBaseUrl
-      ? clientApiKey || ''
-      : resolveImageApiKey(providerId, clientApiKey);
-    if (!apiKey) {
-      return apiError(
-        'MISSING_API_KEY',
-        401,
-        `No API key configured for image provider: ${providerId}`,
-      );
-    }
-
-    const baseUrl = clientBaseUrl ? clientBaseUrl : resolveImageBaseUrl(providerId, clientBaseUrl);
-
-    // Resolve dimensions from aspect ratio if not explicitly set
-    if (!body.width && !body.height && body.aspectRatio) {
-      const dims = aspectRatioToDimensions(body.aspectRatio);
-      body.width = dims.width;
-      body.height = dims.height;
-    }
-
-    log.info(
-      `Generating image: provider=${providerId}, model=${clientModel || 'default'}, ` +
-        `prompt="${body.prompt.slice(0, 80)}...", size=${body.width ?? 'auto'}x${body.height ?? 'auto'}`,
-    );
-
-    const result = await generateImage({ providerId, apiKey, baseUrl, model: clientModel }, body);
-
-    return apiSuccess({ result });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    // Detect content safety filter rejections (e.g. Seedream OutputImageSensitiveContentDetected)
-    if (message.includes('SensitiveContent') || message.includes('sensitive information')) {
-      log.warn(`Image blocked by content safety filter: ${message}`);
-      return apiError('CONTENT_SENSITIVE', 400, message);
-    }
-    log.error('Image generation error:', error);
-    return apiError('INTERNAL_ERROR', 500, message);
-  }
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  });
 }
+

@@ -12,6 +12,7 @@ import { db, mediaFileKey } from '@/lib/utils/database';
 import type { SceneOutline } from '@/lib/types/generation';
 import type { MediaGenerationRequest } from '@/lib/media/types';
 import { createLogger } from '@/lib/logger';
+import { fetchStreamingJson } from '@/lib/utils/stream-fetch';
 
 const log = createLogger('MediaOrchestrator');
 
@@ -221,37 +222,42 @@ async function callImageApi(
   const settings = useSettingsStore.getState();
   const providerConfig = settings.imageProvidersConfig?.[settings.imageProviderId];
 
-  const response = await fetch('/api/generate/image', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-image-provider': settings.imageProviderId || '',
-      'x-image-model': settings.imageModelId || '',
-      'x-api-key': providerConfig?.apiKey || '',
-      'x-base-url': providerConfig?.baseUrl || '',
-    },
-    body: JSON.stringify({
-      prompt: req.prompt,
-      aspectRatio: req.aspectRatio,
-      style: req.style,
-    }),
-    signal: abortSignal,
-  });
+  try {
+    const data = await fetchStreamingJson<{
+      success: boolean;
+      result?: { url?: string; base64?: string };
+      error?: string;
+      errorCode?: string;
+    }>('/api/generate/image', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-image-provider': settings.imageProviderId || '',
+        'x-image-model': settings.imageModelId || '',
+        'x-api-key': providerConfig?.apiKey || '',
+        'x-base-url': providerConfig?.baseUrl || '',
+      },
+      body: JSON.stringify({
+        prompt: req.prompt,
+        aspectRatio: req.aspectRatio,
+        style: req.style,
+      }),
+      signal: abortSignal,
+    });
 
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new MediaApiError(data.error || `Image API returned ${response.status}`, data.errorCode);
+    if (!data.success) {
+      throw new MediaApiError(data.error || 'Image generation failed', data.errorCode);
+    }
+
+    // Result may have url or base64
+    const url =
+      data.result?.url || (data.result?.base64 ? `data:image/png;base64,${data.result.base64}` : '');
+    if (!url) throw new Error('No image URL in response');
+    return { url };
+  } catch (err) {
+    if (err instanceof MediaApiError) throw err;
+    throw new MediaApiError(err instanceof Error ? err.message : String(err));
   }
-
-  const data = await response.json();
-  if (!data.success)
-    throw new MediaApiError(data.error || 'Image generation failed', data.errorCode);
-
-  // Result may have url or base64
-  const url =
-    data.result?.url || (data.result?.base64 ? `data:image/png;base64,${data.result.base64}` : '');
-  if (!url) throw new Error('No image URL in response');
-  return { url };
 }
 
 async function callVideoApi(

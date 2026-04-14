@@ -105,19 +105,17 @@ async function fetchSceneActions(
   },
   signal?: AbortSignal,
 ): Promise<SceneActionsResult> {
-  const response = await fetch('/api/generate/scene-actions', {
-    method: 'POST',
-    headers: getApiHeaders(),
-    body: JSON.stringify(params),
-    signal,
-  });
-
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({ error: 'Request failed' }));
-    return { success: false, error: data.error || `HTTP ${response.status}` };
+  try {
+    const result = await fetchStreamingJson<SceneActionsResult>('/api/generate/scene-actions', {
+      method: 'POST',
+      headers: getApiHeaders(),
+      body: JSON.stringify(params),
+      signal,
+    });
+    return result;
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
-
-  return response.json();
 }
 
 /** Generate TTS for all speech actions in a scene. Returns result. */
