@@ -10,16 +10,18 @@ import {
   Download,
   FileDown,
   Package,
+  RefreshCw,
 } from 'lucide-react';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { useTheme } from '@/lib/hooks/use-theme';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { SettingsDialog } from './settings';
 import { cn } from '@/lib/utils';
 import { useStageStore } from '@/lib/store/stage';
 import { useMediaGenerationStore } from '@/lib/store/media-generation';
 import { useExportPPTX } from '@/lib/export/use-export-pptx';
+import { retryRemainingMedia } from '@/lib/media/media-orchestrator';
 
 interface HeaderProps {
   readonly currentSceneTitle: string;
@@ -32,21 +34,53 @@ export function Header({ currentSceneTitle }: HeaderProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [retryingImages, setRetryingImages] = useState(false);
 
   // Export
   const { exporting: isExporting, exportPPTX, exportResourcePack } = useExportPPTX();
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
   const scenes = useStageStore((s) => s.scenes);
+  const stage = useStageStore((s) => s.stage);
   const generatingOutlines = useStageStore((s) => s.generatingOutlines);
   const failedOutlines = useStageStore((s) => s.failedOutlines);
   const mediaTasks = useMediaGenerationStore((s) => s.tasks);
+
+  const failedMediaTasks = useMemo(
+    () => Object.values(mediaTasks).filter((task) => task.status === 'failed'),
+    [mediaTasks],
+  );
 
   const canExport =
     scenes.length > 0 &&
     generatingOutlines.length === 0 &&
     failedOutlines.length === 0 &&
     Object.values(mediaTasks).every((task) => task.status === 'done' || task.status === 'failed');
+
+  const showRetryImages =
+    scenes.length > 0 &&
+    generatingOutlines.length === 0 &&
+    failedOutlines.length === 0 &&
+    failedMediaTasks.length > 0;
+
+  const handleRetryImages = async () => {
+    if (retryingImages || !stage?.id) return;
+    setRetryingImages(true);
+    try {
+      // Retry all failed tasks for this stage
+      await retryRemainingMedia(stage.id);
+
+      // After retrying, update the classroom in Supabase with the latest scenes (which now have permanent URLs)
+      const latestScenes = useStageStore.getState().scenes;
+      await fetch(`/api/user/classrooms/${stage.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scenes: latestScenes }),
+      });
+    } finally {
+      setRetryingImages(false);
+    }
+  };
 
   const languageRef = useRef<HTMLDivElement>(null);
   const themeRef = useRef<HTMLDivElement>(null);
@@ -216,6 +250,34 @@ export function Header({ currentSceneTitle }: HeaderProps) {
               <Settings className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" />
             </button>
           </div>
+
+          {showRetryImages && (
+            <>
+              <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700" />
+              <div className="relative">
+                <button
+                  onClick={handleRetryImages}
+                  disabled={retryingImages}
+                  title={t('settings.mediaRetry')}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all',
+                    retryingImages
+                      ? 'text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 cursor-not-allowed'
+                      : 'text-amber-600 dark:text-amber-400 hover:bg-white dark:hover:bg-gray-700 hover:shadow-sm',
+                  )}
+                >
+                  <RefreshCw
+                    className={cn('w-3.5 h-3.5', retryingImages && 'animate-spin')}
+                  />
+                  <span>
+                    {retryingImages
+                      ? `${t('settings.testingConnection')} (${failedMediaTasks.length})`
+                      : t('settings.mediaRetry')}
+                  </span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Export Dropdown */}

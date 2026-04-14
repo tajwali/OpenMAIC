@@ -65,6 +65,24 @@ export async function generateMediaForOutlines(
 }
 
 /**
+ * Batch retry all failed media tasks for a stage.
+ */
+export async function retryRemainingMedia(stageId: string): Promise<void> {
+
+  const store = useMediaGenerationStore.getState();
+  const failedTasks = Object.values(store.tasks).filter(
+    (t) => t.stageId === stageId && t.status === 'failed',
+  );
+
+  if (failedTasks.length === 0) return;
+
+  // Process requests serially to avoid overloading provider APIs
+  for (const task of failedTasks) {
+    await retryMediaTask(task.elementId);
+  }
+}
+
+/**
  * Retry a single failed media task.
  */
 export async function retryMediaTask(elementId: string): Promise<void> {
