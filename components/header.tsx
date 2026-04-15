@@ -53,8 +53,8 @@ export function Header({ currentSceneTitle }: HeaderProps) {
     [mediaTasks],
   );
 
-  const missingImageIds = useMemo(() => {
-    const ids = new Set<string>();
+  const tasksToRetryInfo = useMemo(() => {
+    const info: Array<{ elementId: string; prompt?: string }> = [];
     for (const scene of scenes) {
       if (scene.content.type === 'slide') {
         for (const el of scene.content.canvas.elements) {
@@ -64,14 +64,21 @@ export function Header({ currentSceneTitle }: HeaderProps) {
               // Check if task exists and is NOT done
               const task = mediaTasks[img.src];
               if (!task || task.status === 'failed' || task.status === 'pending') {
-                ids.add(img.src);
+                // If element has prompt, use it directly
+                if (img.prompt) {
+                  info.push({ elementId: img.src, prompt: img.prompt });
+                } else {
+                  // Otherwise, add just the ID, we'll look it up in outlines later if needed
+                  info.push({ elementId: img.src });
+                }
               }
             }
           }
         }
       }
     }
-    return Array.from(ids);
+    // Deduplicate by elementId, keeping the one with the prompt if available
+    return Array.from(new Map(info.map(item => [item.elementId, item])).values());
   }, [scenes, mediaTasks]);
 
   const canExport =
@@ -84,41 +91,72 @@ export function Header({ currentSceneTitle }: HeaderProps) {
     scenes.length > 0 &&
     generatingOutlines.length === 0 &&
     failedOutlines.length === 0 &&
-    (failedMediaTasks.length > 0 || missingImageIds.length > 0);
+    (failedMediaTasks.length > 0 || tasksToRetryInfo.length > 0); // Use tasksToRetryInfo length
 
   const handleRetryImages = async () => {
     if (retryingImages || !stage?.id) return;
     setRetryingImages(true);
     try {
-      // 1. Enqueue missing tasks from outlines if they are not in the store
-      const missingTasksToEnqueue = [];
-      for (const elementId of missingImageIds) {
-        if (!mediaTasks[elementId]) {
-          // Find the prompt in outlines
-          for (const outline of outlines) {
-            const mg = outline.mediaGenerations?.find((m) => m.elementId === elementId);
-            if (mg) {
-              missingTasksToEnqueue.push(mg);
-              break;
+      const currentMediaTasks = useMediaGenerationStore.getState().tasks;
+      const currentOutlines = useStageStore.getState().outlines;
+
+      const tasksToEnqueue: Array<{ elementId: string; prompt: string; type: 'image' | 'video' }> = [];
+
+      // 1. Process missing images and retrieve their prompts
+      for (const info of tasksToRetryInfo) {
+        const { elementId, prompt: elementPrompt } = info;
+
+        // If element has a prompt, use it directly
+        if (elementPrompt) {
+          tasksToEnqueue.push({ elementId, prompt: elementPrompt, type: 'image' });
+        } else {
+          // Fallback: try to find prompt in outlines if not available on element
+          // Note: outlines might be empty if loaded from Supabase without local generation history
+          if (currentOutlines) {
+            for (const outline of currentOutlines) {
+              const mg = outline.mediaGenerations?.find((m) => m.elementId === elementId);
+              if (mg?.prompt) {
+                tasksToEnqueue.push({ elementId, prompt: mg.prompt, type: mg.type ?? 'image' });
+                break; // Found prompt for this elementId
+              }
             }
           }
         }
       }
 
-      if (missingTasksToEnqueue.length > 0) {
-        useMediaGenerationStore.getState().enqueueTasks(stage.id, missingTasksToEnqueue);
+      // Filter out tasks that are already in a non-retryable state or have no prompt
+      const finalTasksToEnqueue = tasksToEnqueue.filter(task => {
+        const existingTask = currentMediaTasks[task.elementId];
+        // Enqueue if task is missing, pending, or failed AND has a prompt
+        return (!existingTask || existingTask.status === 'failed' || existingTask.status === 'pending') && task.prompt;
+      });
+
+
+      if (finalTasksToEnqueue.length > 0) {
+        useMediaGenerationStore.getState().enqueueTasks(stage.id, finalTasksToEnqueue);
       }
 
-      // 2. Mark any non-failed placeholders as failed so retryRemainingMedia picks them up
-      // (Covers cases where src is gen_img_1 but store state is missing or 'pending')
-      for (const elementId of missingImageIds) {
+      // 2. Mark any relevant tasks as 'failed' so retryRemainingMedia picks them up
+      // This step is crucial for elements that were placeholders but not yet tasks in the store,
+      // or were in a non-failed state but still missing.
+      // We iterate through tasksToRetryInfo to ensure we cover all elements that *should* be retried.
+      for (const info of tasksToRetryInfo) {
+        const elementId = info.elementId;
         const task = useMediaGenerationStore.getState().getTask(elementId);
-        if (task && task.status !== 'failed' && task.status !== 'done') {
-          useMediaGenerationStore.getState().markFailed(elementId, 'Incomplete generation');
-        } else if (!task) {
-          // If still no task (outline not found), we can't retry it anyway
+        // If task doesn't exist, is pending (was just enqueued), or failed, ensure it's retried.
+        // If task is 'done', we don't need to retry.
+        if (!task || task.status === 'pending' || task.status === 'failed') {
+            // No direct action needed here, retryRemainingMedia will pick them up.
+            // The enqueueTasks above ensures they get a 'pending' status.
+        } else if (task.status !== 'done') {
+            // If task exists but is not done and not failed/pending, mark as failed for retry.
+            // This covers cases where the task was previously successful but the element still looks like a placeholder.
+            // e.g. blob URL became invalid.
+            useMediaGenerationStore.getState().markFailed(elementId, 'Placeholder mismatch or invalid URL');
         }
+        // If task.status is 'done', we skip marking as failed as it's already processed.
       }
+
 
       // 3. Retry all failed tasks for this stage
       await retryRemainingMedia(stage.id);

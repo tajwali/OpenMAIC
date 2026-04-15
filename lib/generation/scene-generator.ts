@@ -246,6 +246,7 @@ function resolveImageIds(
   elements: GeneratedSlideData['elements'],
   imageMapping?: ImageMapping,
   generatedMediaMapping?: ImageMapping,
+  mediaGenerations?: SceneOutline['mediaGenerations'], // Added to accept mediaGenerations
 ): GeneratedSlideData['elements'] {
   return elements
     .map((el) => {
@@ -268,13 +269,23 @@ function resolveImageIds(
 
         // Generated image reference — keep as placeholder for async backfill
         if (isGeneratedImageId(src)) {
+          let prompt: string | undefined;
+          // Find the prompt from mediaGenerations using the elementId (which is src here)
+          if (mediaGenerations) {
+            const mg = mediaGenerations.find((mg) => mg.elementId === src);
+            if (mg?.prompt) {
+              prompt = mg.prompt;
+            }
+          }
+
           if (generatedMediaMapping && generatedMediaMapping[src]) {
             log.debug(`Resolved generated image ID "${src}" to URL`);
-            return { ...el, src: generatedMediaMapping[src] };
+            return { ...el, src: generatedMediaMapping[src], prompt };
           }
           // Keep element with placeholder ID — frontend renders skeleton
           log.debug(`Keeping generated image placeholder: ${src}`);
-          return el;
+          // Attach prompt even if URL is not yet available
+          return { ...el, prompt };
         }
       }
 
@@ -596,6 +607,7 @@ async function generateSlideContent(
     latexProcessedElements,
     imageMapping,
     generatedMediaMapping,
+    outline.mediaGenerations, // Pass mediaGenerations here
   );
   log.debug(`After image resolution: ${resolvedElements.length} elements`);
 

@@ -296,6 +296,7 @@ export interface PPTImageElement extends PPTBaseElement {
   type: 'image';
   fixedRatio: boolean;
   src: string;
+  prompt?: string; // ADDED: Store the generation prompt for retry functionality
   outline?: PPTElementOutline;
   filters?: ImageElementFilters;
   clip?: ImageElementClip;
