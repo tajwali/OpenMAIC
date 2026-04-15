@@ -8,6 +8,7 @@
 
 import { useMediaGenerationStore } from '@/lib/store/media-generation';
 import { useSettingsStore } from '@/lib/store/settings';
+import { useStageStore } from '@/lib/store/stage';
 import { db, mediaFileKey } from '@/lib/utils/database';
 import type { SceneOutline } from '@/lib/types/generation';
 import type { MediaGenerationRequest } from '@/lib/media/types';
@@ -200,6 +201,27 @@ async function generateSingleMedia(
             // Update store with permanent server URL so it gets picked up by incremental saves
             useMediaGenerationStore.getState().markDone(req.elementId, serverUrl, posterObjectUrl);
             log.info(`Uploaded generated image ${req.elementId} -> ${serverUrl}`);
+
+            // Persist the server URL to Supabase immediately — the earlier incremental
+            // PATCH fired before this upload completed and still has the placeholder ID.
+            // Deep-clone scenes and substitute this element's placeholder with the real URL.
+            const rawScenes = useStageStore.getState().scenes;
+            const scenesWithUrl = JSON.parse(JSON.stringify(rawScenes)) as typeof rawScenes;
+            for (const scene of scenesWithUrl) {
+              if (scene.type !== 'slide') continue;
+              const elements = (scene.content as { canvas?: { elements?: Array<{ type: string; src: string }> } }).canvas?.elements;
+              if (!elements) continue;
+              for (const el of elements) {
+                if (el.type === 'image' && el.src === req.elementId) {
+                  el.src = serverUrl;
+                }
+              }
+            }
+            void fetch(`/api/user/classrooms/${stageId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ scenes: scenesWithUrl }),
+            }).catch(() => {});
           } else {
             log.warn(`Upload failed for ${req.elementId}: HTTP ${res.status}`);
           }
