@@ -68,7 +68,7 @@ export async function POST(req: Request) {
       topic: requirement.slice(0, 500),
       scenes: scenes ?? [],
       status: 'complete',
-      grade: grade ?? null,
+      grade: grade ? parseInt(String(grade).replace(/[^0-9]/g, "")) || null : null,
       subject_id: manualSubjectId,
     }, { onConflict: 'id' });
 
