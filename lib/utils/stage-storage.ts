@@ -185,21 +185,24 @@ export async function getFirstSlideByStages(
           );
           if (placeholderEls.length > 0) {
             const mediaRecords = await db.mediaFiles.where('stageId').equals(stageId).toArray();
-            const mediaMap = new Map(
-              mediaRecords.map((r) => {
-                // Key format: stageId:elementId → extract elementId
-                const elementId = r.id.includes(':') ? r.id.split(':').slice(1).join(':') : r.id;
-                return [elementId, r.blob] as const;
-              }),
-            );
+            const mediaMap = new Map<string, Blob>();
+            const extMap = new Map<string, string>();
+            for (const r of mediaRecords) {
+              // Key format: stageId:elementId → extract elementId
+              const elementId = r.id.includes(':') ? r.id.split(':').slice(1).join(':') : r.id;
+              mediaMap.set(elementId, r.blob);
+              const mt = r.mimeType ?? '';
+              const ext = mt.includes('webp') ? 'webp' : mt.includes('jpg') || mt.includes('jpeg') ? 'jpg' : 'png';
+              extMap.set(elementId, ext);
+            }
             for (const el of placeholderEls as Array<{ src: string }>) {
               const blob = mediaMap.get(el.src);
-              if (blob) {
+              if (blob && blob.size > 0) {
                 el.src = URL.createObjectURL(blob);
               } else {
-                // Clear unresolved placeholder so BaseImageElement won't subscribe
-                // to the global media store (which may have stale data from another course)
-                el.src = '';
+                // Fall back to server URL — image may have been uploaded from another device
+                const ext = extMap.get(el.src) ?? 'png';
+                el.src = `/api/classroom-media/${stageId}/media/${el.src}.${ext}`;
               }
             }
           }
