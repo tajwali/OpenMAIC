@@ -385,7 +385,7 @@ function GenerationPreviewContent() {
 
       // ── Generate outlines first (infers languageDirective) ──
       let outlines = currentSession.sceneOutlines;
-      let languageDirective: string | undefined;
+      let languageDirective: string | undefined = currentSession.languageDirective;
 
       const outlineStepIdx = activeSteps.findIndex((s) => s.id === 'outline');
       setCurrentStepIndex(outlineStepIdx >= 0 ? outlineStepIdx : 0);
@@ -770,7 +770,7 @@ function GenerationPreviewContent() {
         const { generateAndUploadTTS } = await import('@/lib/audio/tts-client');
         const ttsProviderConfig = settings.ttsProvidersConfig?.[settings.ttsProviderId];
         const speechActions = (scene.actions || []).filter(
-          (a: Action): a is SpeechAction => a.type === 'speech' && !!a.text,
+          (a: Action): a is SpeechAction => a.type === 'speech' && 'text' in a && !!a.text,
         );
 
         let ttsFailCount = 0;

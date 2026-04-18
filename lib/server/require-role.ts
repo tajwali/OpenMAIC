@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getSession } from '@/lib/supabase/server'
 import { getSupabaseAdmin } from '@/lib/server/supabase-admin'
 import { NextResponse } from 'next/server'
 
@@ -18,15 +18,15 @@ export interface AuthError {
 
 export async function requireAuth(): Promise<AuthResult | AuthError> {
   try {
-    const supabase = await createClient()
-    const { data: { user }, error } = await supabase.auth.getUser()
+    const session = await getSession()
 
-    if (error || !user) {
+    if (!session || !session.user) {
       return {
         error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
     }
 
+    const user = session.user
     const admin = getSupabaseAdmin()
     const { data: profile } = await admin
       .from('user_profiles')

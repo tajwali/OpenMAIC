@@ -24,8 +24,15 @@ interface Course {
   status: string
   created_at: string
   grade: string | null
+  subject_id: string | null
   subject_name: string | null
   subject_icon: string | null
+}
+
+interface Subject {
+  id: string
+  name: string
+  icon: string
 }
 
 interface Assignment {
@@ -72,6 +79,8 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
   const [tab, setTab] = useState<Tab>('students')
   const [inviteCode, setInviteCode] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all')
   const [students, setStudents] = useState<Student[]>([])
   const [courses, setCourses] = useState<Course[]>([])
   const [assignments, setAssignments] = useState<Assignment[]>([])
@@ -84,14 +93,6 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
   const [examResults, setExamResults] = useState<ExamWithResults[]>([])
   const [examResultsLoading, setExamResultsLoading] = useState(false)
   const [expandedExams, setExpandedExams] = useState<Set<string>>(new Set())
-  // Profile modal
-  const [showProfile, setShowProfile] = useState(false)
-  const [profileName, setProfileName] = useState('')
-  const [profileGender, setProfileGender] = useState('')
-  const [profilePassword, setProfilePassword] = useState('')
-  const [profileSaving, setProfileSaving] = useState(false)
-  const [profileError, setProfileError] = useState<string | null>(null)
-  const [profileSuccess, setProfileSuccess] = useState(false)
   const [unassigningId, setUnassigningId] = useState<string | null>(null)
   // Student edit modal
   const [editingStudent, setEditingStudent] = useState<Student | null>(null)
@@ -109,11 +110,13 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
       fetch('/api/teacher/students').then(safeJson).catch(() => null),
       fetch('/api/teacher/courses').then(safeJson).catch(() => null),
       fetch('/api/teacher/assign-course').then(safeJson).catch(() => null),
-    ]).then(([ic, studs, crses, asns]) => {
+      fetch('/api/subjects').then(safeJson).catch(() => null),
+    ]).then(([ic, studs, crses, asns, subs]) => {
       setInviteCode((ic as { invite_code?: string } | null)?.invite_code ?? null)
       setStudents(Array.isArray(studs) ? (studs as Student[]) : [])
       setCourses(Array.isArray(crses) ? (crses as Course[]) : [])
       setAssignments(Array.isArray(asns) ? (asns as Assignment[]) : [])
+      setSubjects(Array.isArray(subs) ? (subs as Subject[]) : [])
     }).catch(() => {
       // Never let a fetch failure crash the dashboard
     }).finally(() => setLoading(false))
@@ -157,46 +160,6 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
     await fetch('/api/auth/logout', { method: 'POST' })
     router.push('/login')
     router.refresh()
-  }
-
-  const openProfile = async () => {
-    setProfileError(null)
-    setProfileSuccess(false)
-    setProfilePassword('')
-    try {
-      const res = await fetch('/api/user/profile')
-      if (res.ok) {
-        const data = await res.json() as { display_name?: string; gender?: string }
-        setProfileName(data.display_name ?? '')
-        setProfileGender(data.gender ?? '')
-      }
-    } catch { /* ignore */ }
-    setShowProfile(true)
-  }
-
-  const handleSaveProfile = async () => {
-    setProfileSaving(true)
-    setProfileError(null)
-    setProfileSuccess(false)
-    try {
-      const patch: Record<string, string> = {}
-      if (profileName.trim()) patch.display_name = profileName.trim()
-      if (profileGender) patch.gender = profileGender
-      if (profilePassword) patch.new_password = profilePassword
-      const res = await fetch('/api/user/profile', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patch),
-      })
-      const data = await res.json() as { error?: string }
-      if (!res.ok) { setProfileError(data.error ?? 'Failed to save'); return }
-      setProfileSuccess(true)
-      setProfilePassword('')
-    } catch {
-      setProfileError('Network error')
-    } finally {
-      setProfileSaving(false)
-    }
   }
 
   const openEditStudent = (s: Student) => {
@@ -300,7 +263,7 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
             <p className="text-sm text-muted-foreground">{displayName ?? userEmail}</p>
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={openProfile} className="p-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors" title="Profile settings">
+            <button onClick={() => router.push('/profile')} className="p-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors" title="Profile settings">
               <UserCircle className="w-4 h-4" />
             </button>
             <button onClick={handleLogout} className="p-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors" title="Logout">
@@ -430,8 +393,8 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
 
         {/* ── Tab: Courses ── */}
         {tab === 'courses' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between mb-4">
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">My Courses</h2>
               <div className="flex items-center gap-2">
                 <button
@@ -449,6 +412,37 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
                 </button>
               </div>
             </div>
+
+            {/* Subject Filter Bar */}
+            {!loading && courses.length > 0 && subjects.length > 0 && (
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide">
+                <button
+                  onClick={() => setSelectedSubjectId('all')}
+                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                    selectedSubjectId === 'all'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  }`}
+                >
+                  All Subjects
+                </button>
+                {subjects.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => setSelectedSubjectId(s.id)}
+                    className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1.5 transition-all ${
+                      selectedSubjectId === s.id
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                    }`}
+                  >
+                    <span>{s.icon}</span>
+                    <span>{s.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
             {loading ? (
               <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-20 rounded-xl bg-muted animate-pulse" />)}</div>
             ) : courses.length === 0 ? (
@@ -458,59 +452,67 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
               </div>
             ) : (
               <div className="space-y-2">
-                {courses.map(c => {
-                  const displayTitle = (c.short_title || c.title || '').slice(0, 60)
-                  return (
-                    <div key={c.id} className="bg-card border border-border rounded-xl p-4 flex items-center justify-between gap-4">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
-                          <p className="font-medium text-foreground">{displayTitle}</p>
-                          <span
-                            className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground font-mono hover:bg-muted/80 transition-colors cursor-pointer shrink-0"
-                            title="Click to copy full course ID"
-                            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.id); }}
+                {courses
+                  .filter(c => selectedSubjectId === 'all' || c.subject_id === selectedSubjectId)
+                  .map(c => {
+                    const displayTitle = (c.short_title || c.title || '').slice(0, 60)
+                    return (
+                      <div key={c.id} className="bg-card border border-border rounded-xl p-4 flex items-center justify-between gap-4 transition-all hover:border-primary/30">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                            <p className="font-medium text-foreground">{displayTitle}</p>
+                            <span
+                              className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground font-mono hover:bg-muted/80 transition-colors cursor-pointer shrink-0"
+                              title="Click to copy full course ID"
+                              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.id); }}
+                            >
+                              #{c.id.slice(-6)}
+                            </span>
+                          </div>
+                          {c.short_title && c.title !== c.short_title && (
+                            <p className="text-[11px] text-muted-foreground line-clamp-1 mb-1" title={c.title}>
+                              {c.title}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-[10px] text-muted-foreground">
+                              {new Date(c.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </p>
+                            {c.grade && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-bold">
+                                G{c.grade}
+                              </span>
+                            )}
+                            {c.subject_name && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 font-bold flex items-center gap-1">
+                                <span>{c.subject_icon}</span>
+                                <span>{c.subject_name}</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            onClick={() => router.push(`/classroom/${c.id}`)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted transition-colors text-muted-foreground"
                           >
-                            #{c.id.slice(-6)}
-                          </span>
-                        </div>
-                        {c.short_title && c.title !== c.short_title && (
-                          <p className="text-[11px] text-muted-foreground line-clamp-1 mb-1" title={c.title}>
-                            {c.title}
-                          </p>
-                        )}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(c.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                          </p>
-                          {c.grade && (
-                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
-                              {c.grade}
-                            </span>
-                          )}
-                          {c.subject_name && (
-                            <span className="text-xs text-muted-foreground">
-                              {c.subject_icon} {c.subject_name}
-                            </span>
-                          )}
+                            Open
+                          </button>
+                          <button
+                            onClick={() => openAssignModal(c)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+                          >
+                            Assign
+                          </button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={() => router.push(`/classroom/${c.id}`)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted transition-colors text-muted-foreground"
-                        >
-                          Open
-                        </button>
-                        <button
-                          onClick={() => openAssignModal(c)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
-                        >
-                          Assign
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                {courses.filter(c => selectedSubjectId === 'all' || c.subject_id === selectedSubjectId).length === 0 && (
+                  <div className="text-center py-12 border border-dashed border-border rounded-xl bg-muted/20">
+                    <p className="text-muted-foreground text-sm">No courses found for this subject.</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -696,56 +698,6 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
                 </div>
               </div>
             )}
-          </div>
-        </Modal>
-      )}
-
-      {/* ── Profile Modal ── */}
-      {showProfile && (
-        <Modal onClose={() => setShowProfile(false)} title="Profile Settings">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Display Name</label>
-              <input
-                type="text"
-                value={profileName}
-                onChange={e => setProfileName(e.target.value)}
-                placeholder="Your name"
-                className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Gender</label>
-              <select
-                value={profileGender}
-                onChange={e => setProfileGender(e.target.value)}
-                className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-              >
-                <option value="">Prefer not to say</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">New Password <span className="font-normal">(leave blank to keep current)</span></label>
-              <input
-                type="password"
-                value={profilePassword}
-                onChange={e => setProfilePassword(e.target.value)}
-                placeholder="Min 6 characters"
-                className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
-            </div>
-            {profileError && <p className="text-xs text-red-500">{profileError}</p>}
-            {profileSuccess && <p className="text-xs text-green-600">Saved successfully</p>}
-            <button
-              onClick={handleSaveProfile}
-              disabled={profileSaving}
-              className="w-full py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-            >
-              {profileSaving ? 'Saving…' : 'Save Changes'}
-            </button>
           </div>
         </Modal>
       )}

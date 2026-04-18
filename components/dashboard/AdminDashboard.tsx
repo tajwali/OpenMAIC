@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Shield, LogOut, Plus, X, Users, BookOpen, Trash2, Pencil, Check } from 'lucide-react'
+import { Shield, LogOut, Plus, X, Users, BookOpen, Trash2, Pencil, Check, UserCircle } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -252,9 +252,18 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
             <h1 className="text-xl font-bold text-foreground">OpenMAIC</h1>
             <p className="text-sm text-muted-foreground">{displayName ?? userEmail ?? 'Admin Dashboard'}</p>
           </div>
-          <button onClick={handleLogout} className="p-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors" title="Logout">
-            <LogOut className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => router.push('/profile')}
+              className="p-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
+              title="Profile settings"
+            >
+              <UserCircle className="w-4 h-4" />
+            </button>
+            <button onClick={handleLogout} className="p-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors" title="Logout">
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </header>
 

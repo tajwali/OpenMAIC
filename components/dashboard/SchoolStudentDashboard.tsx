@@ -57,6 +57,12 @@ interface CourseProgress {
   completed: boolean
 }
 
+interface Subject {
+  id: string
+  name: string
+  icon: string
+}
+
 interface Props {
   userEmail?: string
   displayName?: string
@@ -65,17 +71,13 @@ interface Props {
 export default function SchoolStudentDashboard({ userEmail, displayName }: Props) {
   const router = useRouter()
   const [classrooms, setClassrooms] = useState<AssignedClassroom[]>([])
+  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all')
   const [stats, setStats] = useState<Stats>({ totalCourses: 0, assignedCourses: 0, quizzesTaken: 0, avgScore: null, coursesCompleted: 0 })
   const [quizHistory, setQuizHistory] = useState<QuizResult[]>([])
   const [exams, setExams] = useState<Exam[]>([])
   const [loading, setLoading] = useState(true)
   const [studentGrade, setStudentGrade] = useState<number | null>(null)
-  const [showProfile, setShowProfile] = useState(false)
-  const [profileName, setProfileName] = useState('')
-  const [profilePassword, setProfilePassword] = useState('')
-  const [profileSaving, setProfileSaving] = useState(false)
-  const [profileError, setProfileError] = useState<string | null>(null)
-  const [profileSuccess, setProfileSuccess] = useState(false)
 
   useEffect(() => {
     const safeJson = (r: Response) => r.ok ? r.json().catch(() => null) : Promise.resolve(null)
@@ -86,7 +88,8 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
       fetch('/api/exams').then(safeJson).catch(() => null),
       fetch('/api/user/course-progress').then(safeJson).catch(() => null),
       fetch('/api/user/profile').then(safeJson).catch(() => null),
-    ]).then(([courses, userStats, quizzes, examList, progressList, profile]) => {
+      fetch('/api/subjects').then(safeJson).catch(() => null),
+    ]).then(([courses, userStats, quizzes, examList, progressList, profile, subs]) => {
       const progressMap = new Map<string, boolean>()
       if (Array.isArray(progressList)) {
         for (const p of progressList as CourseProgress[]) {
@@ -99,46 +102,9 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
       setQuizHistory(Array.isArray(quizzes) ? (quizzes as QuizResult[]).slice(0, 5) : [])
       setExams(Array.isArray(examList) ? (examList as Exam[]) : [])
       if (profile?.grade) setStudentGrade(parseInt(profile.grade))
+      setSubjects(Array.isArray(subs) ? (subs as Subject[]) : [])
     }).catch(() => {}).finally(() => setLoading(false))
   }, [])
-
-  const openProfile = async () => {
-    setProfileError(null)
-    setProfileSuccess(false)
-    setProfilePassword('')
-    try {
-      const res = await fetch('/api/user/profile')
-      if (res.ok) {
-        const data = await res.json() as { display_name?: string }
-        setProfileName(data.display_name ?? '')
-      }
-    } catch { /* ignore */ }
-    setShowProfile(true)
-  }
-
-  const handleSaveProfile = async () => {
-    setProfileSaving(true)
-    setProfileError(null)
-    setProfileSuccess(false)
-    try {
-      const patch: Record<string, string> = {}
-      if (profileName.trim()) patch.display_name = profileName.trim()
-      if (profilePassword) patch.new_password = profilePassword
-      const res = await fetch('/api/user/profile', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patch),
-      })
-      const data = await res.json() as { error?: string }
-      if (!res.ok) { setProfileError(data.error ?? 'Failed'); return }
-      setProfileSuccess(true)
-      setProfilePassword('')
-    } catch {
-      setProfileError('Network error')
-    } finally {
-      setProfileSaving(false)
-    }
-  }
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -164,7 +130,7 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
           </div>
           <div className="flex items-center gap-1">
             <button
-              onClick={openProfile}
+              onClick={() => router.push('/profile')}
               className="p-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
               title="Profile settings"
             >
@@ -194,8 +160,41 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
         </div>
 
         {/* Course Grid */}
-        <section>
-          <h2 className="text-lg font-semibold mb-4">Assigned Courses</h2>
+        <section className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <h2 className="text-lg font-semibold">Assigned Courses</h2>
+            
+            {/* Subject Filter Bar */}
+            {!loading && classrooms.length > 0 && subjects.length > 0 && (
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
+                <button
+                  onClick={() => setSelectedSubjectId('all')}
+                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                    selectedSubjectId === 'all'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  }`}
+                >
+                  All
+                </button>
+                {subjects.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => setSelectedSubjectId(s.id)}
+                    className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1.5 transition-all ${
+                      selectedSubjectId === s.id
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                    }`}
+                  >
+                    <span>{s.icon}</span>
+                    <span>{s.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {loading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {[1, 2, 3].map(i => <div key={i} className="h-32 rounded-xl bg-muted animate-pulse" />)}
@@ -207,53 +206,68 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {classrooms.map(c => {
-                const displayTitle = (c.short_title || c.title || '').slice(0, 60)
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => router.push(`/classroom/${c.id}`)}
-                    className="text-left bg-card border border-border rounded-xl p-5 hover:border-primary/50 hover:shadow-md transition-all group"
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium">
-                          assigned
-                        </span>
-                        {c.grade && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-medium">
-                            G{c.grade}
+              {classrooms
+                .filter(c => selectedSubjectId === 'all' || (c as any).subject_id === selectedSubjectId)
+                .map(c => {
+                  const displayTitle = (c.short_title || c.title || '').slice(0, 60)
+                  const subjectIcon = (c as any).subject_icon
+                  const subjectName = (c as any).subject_name
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => router.push(`/classroom/${c.id}`)}
+                      className="text-left bg-card border border-border rounded-xl p-5 hover:border-primary/50 hover:shadow-md transition-all group relative overflow-hidden"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-bold uppercase tracking-wider">
+                            assigned
                           </span>
-                        )}
-                        {c.completed && (
-                          <CheckCircle className="w-3.5 h-3.5 text-green-500" />
-                        )}
+                          {c.grade && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold">
+                              G{c.grade}
+                            </span>
+                          )}
+                          {subjectName && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 font-bold flex items-center gap-1">
+                              <span>{subjectIcon}</span>
+                              <span>{subjectName}</span>
+                            </span>
+                          )}
+                          {c.completed && (
+                            <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                          )}
+                        </div>
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                          {new Date(c.assigned_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        </span>
                       </div>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(c.assigned_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                      <p className="font-medium text-sm text-foreground group-hover:text-primary transition-colors">
-                        {displayTitle}
-                      </p>
-                      <span
-                        className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground font-mono hover:bg-muted/80 transition-colors cursor-pointer shrink-0"
-                        title="Click to copy full course ID"
-                        onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.id); }}
-                      >
-                        #{c.id.slice(-6)}
-                      </span>
-                    </div>
-                    {c.short_title && c.title !== c.short_title && (
-                      <p className="text-[11px] text-muted-foreground line-clamp-1" title={c.title}>
-                        {c.title}
-                      </p>
-                    )}
-                  </button>
-                )
-              })}
+                      <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                        <p className="font-medium text-sm text-foreground group-hover:text-primary transition-colors">
+                          {displayTitle}
+                        </p>
+                        <span
+                          className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground font-mono hover:bg-muted/80 transition-colors cursor-pointer shrink-0"
+                          title="Click to copy full course ID"
+                          onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.id); }}
+                        >
+                          #{c.id.slice(-6)}
+                        </span>
+                      </div>
+                      {c.short_title && c.title !== c.short_title && (
+                        <p className="text-[11px] text-muted-foreground line-clamp-1" title={c.title}>
+                          {c.title}
+                        </p>
+                      )}
+                    </button>
+                  )
+                })}
             </div>
+          )}
+          {classrooms.filter(c => selectedSubjectId === 'all' || (c as any).subject_id === selectedSubjectId).length === 0 && classrooms.length > 0 && (
+             <div className="text-center py-12 border border-dashed border-border rounded-xl bg-muted/20">
+               <p className="text-muted-foreground text-sm">No assigned courses found for this subject.</p>
+             </div>
           )}
         </section>
 
@@ -322,50 +336,6 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
         </section>
       </main>
 
-      {/* ── Profile Modal ── */}
-      {showProfile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-sm">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-              <h3 className="font-semibold text-foreground">Profile Settings</h3>
-              <button onClick={() => setShowProfile(false)} className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors">
-                <UserCircle className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Display Name</label>
-                <input
-                  type="text"
-                  value={profileName}
-                  onChange={e => setProfileName(e.target.value)}
-                  placeholder="Your name"
-                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">New Password <span className="font-normal">(leave blank to keep current)</span></label>
-                <input
-                  type="password"
-                  value={profilePassword}
-                  onChange={e => setProfilePassword(e.target.value)}
-                  placeholder="Min 6 characters"
-                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                />
-              </div>
-              {profileError && <p className="text-xs text-red-500">{profileError}</p>}
-              {profileSuccess && <p className="text-xs text-green-600">Saved successfully</p>}
-              <button
-                onClick={handleSaveProfile}
-                disabled={profileSaving}
-                className="w-full py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-              >
-                {profileSaving ? 'Saving…' : 'Save Changes'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

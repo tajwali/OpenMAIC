@@ -62,6 +62,7 @@ export async function PATCH(req: NextRequest) {
 
     const body = await req.json() as {
       display_name?: string
+      current_password?: string
       new_password?: string
       gender?: string
       grade?: string
@@ -106,9 +107,27 @@ export async function PATCH(req: NextRequest) {
 
     // Password update via GoTrue admin
     if (body.new_password !== undefined) {
-      if (body.new_password.length < 6) {
-        return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 })
+      if (!body.current_password) {
+        return NextResponse.json({ error: 'Current password is required to change password' }, { status: 400 })
       }
+      if (body.new_password.length < 6) {
+        return NextResponse.json({ error: 'New password must be at least 6 characters' }, { status: 400 })
+      }
+
+      // Verify old password by attempting a sign-in (via GoTrue direct API)
+      const verifyRes = await fetch(`${GOTRUE_URL}/token?grant_type=password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: auth.user.email,
+          password: body.current_password,
+        }),
+      })
+
+      if (!verifyRes.ok) {
+        return NextResponse.json({ error: 'Incorrect current password' }, { status: 401 })
+      }
+
       const res = await gotrueAdmin(`/users/${auth.user.id}`, {
         method: 'PUT',
         body: JSON.stringify({ password: body.new_password }),

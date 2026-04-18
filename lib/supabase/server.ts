@@ -47,3 +47,23 @@ export async function createClient() {
     }
   )
 }
+
+/**
+ * getSession - reads the session from the cookies locally without a network call.
+ * Reliable for simple auth checks through Cloudflare tunnels.
+ */
+export async function getSession() {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  return session
+}
+
+/**
+ * getUser - calls GoTrue to verify the user.
+ * More secure but requires a network call (may be unreliable through tunnels).
+ */
+export async function getUser() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  return user
+}

@@ -14,6 +14,8 @@ import type { TTSProviderId } from '@/lib/audio/types';
 import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
+import { getSession } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/server/supabase-admin';
 
 const log = createLogger('TTS API');
 
@@ -22,7 +24,7 @@ export const maxDuration = 30;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { text, audioId, ttsProviderId, ttsModelId, ttsVoice, ttsSpeed, ttsApiKey, ttsBaseUrl } =
+    const { text, audioId, ttsProviderId, ttsModelId, ttsVoice: requestedVoice, ttsSpeed, ttsApiKey, ttsBaseUrl } =
       body as {
         text: string;
         audioId: string;
@@ -35,7 +37,7 @@ export async function POST(req: NextRequest) {
       };
 
     // Validate required fields
-    if (!text || !audioId || !ttsProviderId || !ttsVoice) {
+    if (!text || !audioId || !ttsProviderId || !requestedVoice) {
       return apiError(
         'MISSING_REQUIRED_FIELD',
         400,
@@ -46,6 +48,40 @@ export async function POST(req: NextRequest) {
     // Reject browser-native TTS — must be handled client-side
     if (ttsProviderId === 'browser-native-tts') {
       return apiError('INVALID_REQUEST', 400, 'browser-native-tts must be handled client-side');
+    }
+
+    // ── Gender-based voice override ──
+    let ttsVoice = requestedVoice;
+    try {
+      const session = await getSession();
+      if (session?.user && ttsProviderId === 'openai-tts') {
+        const admin = getSupabaseAdmin();
+        const { data: profile } = await admin
+          .from('user_profiles')
+          .select('gender')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profile?.gender) {
+          const gender = profile.gender.toLowerCase();
+          // female -> alloy, nova, or shimmer
+          if (gender === 'female' && !['alloy', 'nova', 'shimmer'].includes(requestedVoice)) {
+            // Only override if the requested voice isn't already a female one
+            // Use deterministic selection based on audioId so different segments of the same text/agent use the same voice
+            const femaleVoices = ['alloy', 'nova', 'shimmer'];
+            const idx = audioId.length % femaleVoices.length;
+            ttsVoice = femaleVoices[idx];
+          }
+          // male -> onyx or echo
+          else if (gender === 'male' && !['onyx', 'echo'].includes(requestedVoice)) {
+            const maleVoices = ['onyx', 'echo'];
+            const idx = audioId.length % maleVoices.length;
+            ttsVoice = maleVoices[idx];
+          }
+        }
+      }
+    } catch (e) {
+      log.warn('Failed to apply gender-based voice override:', e);
     }
 
     const clientBaseUrl = ttsBaseUrl || undefined;
