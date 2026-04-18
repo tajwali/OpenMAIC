@@ -202,8 +202,35 @@ export async function POST(req: NextRequest) {
     // Build teacher context from agents (if available)
     const teacherContext = formatTeacherPersonaForPrompt(agents);
 
+    // If the user explicitly selected a language, prepend an override instruction so the LLM
+    // treats it as an "explicit language request" (rule #1 in the system prompt), which wins
+    // over any inference from the topic or requirement text.
+    const EXPLICIT_LANGUAGE_DIRECTIVES: Record<string, string> = {
+      'en-US': 'Teach all content exclusively in English.',
+      'zh-CN': '用中文教授所有内容。',
+    };
+    const explicitLangInstruction = requirements.language
+      ? EXPLICIT_LANGUAGE_DIRECTIVES[requirements.language]
+      : undefined;
+    const requirementWithLang = explicitLangInstruction
+      ? `[Explicit language instruction: ${explicitLangInstruction}]\n\n${requirements.requirement}`
+      : requirements.requirement;
+
+    // Canonical languageDirective to use when the user has explicitly selected a language.
+    // This overrides whatever the LLM infers so that all downstream generation steps
+    // (scene-content, scene-actions, agent-profiles) also honour the explicit selection.
+    const CANONICAL_DIRECTIVES: Record<string, string> = {
+      'en-US':
+        'Teach all content exclusively in English. All titles, descriptions, key points, agent names, and dialogue must be in English.',
+      'zh-CN':
+        '用中文教授所有内容。所有标题、描述、要点、助手名称和对话都必须使用中文。',
+    };
+    const canonicalDirective = requirements.language
+      ? CANONICAL_DIRECTIVES[requirements.language]
+      : undefined;
+
     const prompts = buildPrompt(PROMPT_IDS.REQUIREMENTS_TO_OUTLINES, {
-      requirement: requirements.requirement,
+      requirement: requirementWithLang,
       pdfContent: pdfText ? pdfText.substring(0, MAX_PDF_CONTENT_CHARS) : 'None',
       availableImages: availableImagesText,
       researchContext: researchContext || 'None',
@@ -285,8 +312,10 @@ export async function POST(req: NextRequest) {
 
                 // Try to extract language directive early
                 if (!languageDirective) {
-                  languageDirective = extractLanguageDirective(fullText);
-                  if (languageDirective) {
+                  const inferred = extractLanguageDirective(fullText);
+                  if (inferred) {
+                    // Explicit user selection overrides LLM inference
+                    languageDirective = canonicalDirective ?? inferred;
                     const ldEvent = JSON.stringify({
                       type: 'languageDirective',
                       data: languageDirective,
@@ -358,11 +387,14 @@ export async function POST(req: NextRequest) {
             // Replace sequential gen_img_N/gen_vid_N with globally unique IDs
             const uniquifiedOutlines = uniquifyMediaElementIds(parsedOutlines);
             // Send done event with all outlines
+            const finalDirective =
+              canonicalDirective ??
+              languageDirective ??
+              'Teach in the language that matches the user requirement.';
             const doneEvent = JSON.stringify({
               type: 'done',
               outlines: uniquifiedOutlines,
-              languageDirective:
-                languageDirective || 'Teach in the language that matches the user requirement.',
+              languageDirective: finalDirective,
             });
             controller.enqueue(encoder.encode(`data: ${doneEvent}\n\n`));
           } else {

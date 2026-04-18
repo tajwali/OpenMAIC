@@ -14,12 +14,10 @@ import type { ProviderId } from '@/lib/types/provider';
 export interface ResolvedModel extends ModelWithInfo {
   /** Original model string (e.g. "google:gemini-2.0-flash") */
   modelString: string;
-  /** Resolved provider ID (e.g. "openai", "ollama") */
-  providerId: string;
-  /** Effective API key after server-side fallback resolution */
-  apiKey: string;
   /** Resolved provider ID */
   providerId: ProviderId;
+  /** Effective API key after server-side fallback resolution */
+  apiKey: string;
 }
 
 // ---------------------------------------------------------------------------

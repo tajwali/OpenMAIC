@@ -20,6 +20,7 @@ export interface ManifestStage {
   name: string;
   description?: string;
   language?: string;
+  languageDirective?: string;
   style?: string;
   createdAt: number;
   updatedAt: number;

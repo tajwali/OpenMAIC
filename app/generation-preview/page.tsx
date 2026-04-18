@@ -354,8 +354,25 @@ function GenerationPreviewContent() {
         imageMapping = currentSession.imageMapping;
       }
 
-      // Create stage client-side
+      // Create stage client-side (needed for agent generation stageId)
       const stageId = nanoid(10);
+
+      // Create placeholder classroom row immediately so incremental PATCH calls have
+      // a target row. init=true skips the LLM title call so this doesn't block generation.
+      void fetch('/api/user/classrooms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: stageId,
+          title: currentSession.requirements.requirement.slice(0, 80) || 'Untitled Course',
+          topic: currentSession.requirements.requirement,
+          scenes: [],
+          grade: currentSession.requirements.grade ?? null,
+          subjectId: currentSession.requirements.subjectId ?? null,
+          init: true,
+        }),
+      }).catch(() => {});
+
       const stage: Stage = {
         id: stageId,
         name: extractTopicFromRequirement(currentSession.requirements.requirement),
@@ -501,36 +518,6 @@ function GenerationPreviewContent() {
         role: string;
         persona?: string;
       }> = [];
-
-      // Create stage client-side (needed for agent generation stageId)
-      const stageId = nanoid(10);
-
-      // Create placeholder classroom row immediately so incremental PATCH calls have
-      // a target row. init=true skips the LLM title call so this doesn't block generation.
-      void fetch('/api/user/classrooms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: stageId,
-          title: currentSession.requirements.requirement.slice(0, 80) || 'Untitled Course',
-          topic: currentSession.requirements.requirement,
-          scenes: [],
-          grade: currentSession.requirements.grade ?? null,
-          subjectId: currentSession.requirements.subjectId ?? null,
-          init: true,
-        }),
-      }).catch(() => {});
-
-      const stage: Stage = {
-        id: stageId,
-        name: extractTopicFromRequirement(currentSession.requirements.requirement),
-        description: '',
-        language: currentSession.requirements.language || 'zh-CN',
-        style: 'professional',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-
 
       if (settings.agentMode === 'auto') {
         const agentStepIdx = activeSteps.findIndex((s) => s.id === 'agent-generation');
