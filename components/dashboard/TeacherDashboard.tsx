@@ -460,15 +460,14 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
               <div className="space-y-2">
                 {courses.map(c => {
                   const displayTitle = (c.short_title || c.title || '').slice(0, 60)
-                  console.log('Rendering course badge for:', c.id);
                   return (
                     <div key={c.id} className="bg-card border border-border rounded-xl p-4 flex items-center justify-between gap-4">
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <p className="font-medium text-foreground truncate flex-1 min-w-0">{displayTitle}</p>
+                        <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                          <p className="font-medium text-foreground">{displayTitle}</p>
                           <span
-                            className="shrink-0 px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground font-mono hover:bg-muted/80 transition-colors cursor-pointer"
-                            title="Click to copy full ID"
+                            className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground font-mono hover:bg-muted/80 transition-colors cursor-pointer shrink-0"
+                            title="Click to copy full course ID"
                             onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.id); }}
                           >
                             #{c.id.slice(-6)}

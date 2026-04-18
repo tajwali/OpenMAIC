@@ -511,19 +511,21 @@ function CourseCard({ classroom, onClick, onDelete }: { classroom: Classroom; on
                 <CheckCircle className="w-3.5 h-3.5" />
               </span>
             )}
-            <span
-              className="shrink-0 px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground font-mono hover:bg-muted/80 transition-colors cursor-pointer"
-              title="Click to copy full ID"
-              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(classroom.id); }}
-            >
-              #{classroom.id.slice(-6)}
-            </span>
           </div>
           <span className="text-xs text-muted-foreground">{date}</span>
         </div>
-        <p className="font-medium text-sm text-foreground group-hover:text-primary transition-colors line-clamp-3">
-          {displayTitle}
-        </p>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <p className="font-medium text-sm text-foreground group-hover:text-primary transition-colors">
+            {displayTitle}
+          </p>
+          <span
+            className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground font-mono hover:bg-muted/80 transition-colors cursor-pointer shrink-0"
+            title="Click to copy full course ID"
+            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(classroom.id); }}
+          >
+            #{classroom.id.slice(-6)}
+          </span>
+        </div>
         {classroom.short_title && classroom.title !== classroom.short_title && (
           <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{classroom.title}</p>
         )}

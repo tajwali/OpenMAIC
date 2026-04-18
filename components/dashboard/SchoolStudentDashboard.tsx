@@ -217,13 +217,13 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
                         {new Date(c.assigned_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="font-medium text-sm text-foreground group-hover:text-primary transition-colors line-clamp-2 flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                      <p className="font-medium text-sm text-foreground group-hover:text-primary transition-colors">
                         {displayTitle}
                       </p>
                       <span
-                        className="shrink-0 px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground font-mono hover:bg-muted/80 transition-colors cursor-pointer"
-                        title="Click to copy full ID"
+                        className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground font-mono hover:bg-muted/80 transition-colors cursor-pointer shrink-0"
+                        title="Click to copy full course ID"
                         onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.id); }}
                       >
                         #{c.id.slice(-6)}
