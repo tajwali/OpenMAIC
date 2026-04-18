@@ -13,14 +13,16 @@ export async function GET() {
 
     const admin = getSupabaseAdmin()
 
-    const [coursesRes, quizRes, progressRes, profileRes] = await Promise.all([
+    const [coursesRes, assignedRes, quizRes, progressRes, profileRes] = await Promise.all([
       admin.from('classrooms').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+      admin.from('course_assignments').select('id', { count: 'exact', head: true }).eq('assigned_to', user.id),
       admin.from('quiz_results').select('percentage').eq('user_id', user.id),
       admin.from('course_progress').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('completed', true),
       admin.from('user_profiles').select('role').eq('id', user.id).single(),
     ])
 
     const totalCourses = coursesRes.count ?? 0
+    const assignedCourses = assignedRes.count ?? 0
     const coursesCompleted = progressRes.count ?? 0
     const quizRows = quizRes.data ?? []
     const quizzesTaken = quizRows.length
@@ -51,6 +53,7 @@ export async function GET() {
 
     return NextResponse.json({
       totalCourses,
+      assignedCourses,
       quizzesTaken,
       avgScore,
       coursesCompleted,

@@ -20,6 +20,7 @@ interface Classroom {
 
 interface Stats {
   totalCourses: number
+  assignedCourses: number
   quizzesTaken: number
   avgScore: number | null
   coursesCompleted: number
@@ -69,7 +70,7 @@ interface Props {
 export default function MatureStudentDashboard({ userEmail, displayName }: Props) {
   const router = useRouter()
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
-  const [stats, setStats] = useState<Stats>({ totalCourses: 0, quizzesTaken: 0, avgScore: null, coursesCompleted: 0 })
+  const [stats, setStats] = useState<Stats>({ totalCourses: 0, assignedCourses: 0, quizzesTaken: 0, avgScore: null, coursesCompleted: 0 })
   const [quizHistory, setQuizHistory] = useState<QuizResult[]>([])
   const [exams, setExams] = useState<Exam[]>([])
   const [loading, setLoading] = useState(true)
@@ -97,7 +98,7 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
       }
       const rawCourses = Array.isArray(courses) ? (courses as Classroom[]) : []
       setClassrooms(rawCourses.map(c => ({ ...c, completed: progressMap.get(c.id) ?? false })))
-      setStats((userStats as Stats | null) ?? { totalCourses: 0, quizzesTaken: 0, avgScore: null, coursesCompleted: 0 })
+      setStats((userStats as Stats | null) ?? { totalCourses: 0, assignedCourses: 0, quizzesTaken: 0, avgScore: null, coursesCompleted: 0 })
       setQuizHistory(Array.isArray(quizzes) ? (quizzes as QuizResult[]).slice(0, 5) : [])
       setExams(Array.isArray(examList) ? (examList as Exam[]) : [])
     }).catch(() => {}).finally(() => setLoading(false))
@@ -217,7 +218,8 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
         {/* Stats Row */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <StatCard icon={<BookOpen className="w-5 h-5 text-blue-500" />} label="Total Courses" value={stats.totalCourses} />
+          <StatCard icon={<BookOpen className="w-5 h-5 text-blue-500" />} label="Courses Owned" value={stats.totalCourses} />
+          <StatCard icon={<BookOpen className="w-5 h-5 text-blue-500" />} label="Assigned Courses" value={stats.assignedCourses} />
           <StatCard icon={<Trophy className="w-5 h-5 text-yellow-500" />} label="Quizzes Taken" value={stats.quizzesTaken} />
           <StatCard
             icon={<BarChart2 className="w-5 h-5 text-green-500" />}
