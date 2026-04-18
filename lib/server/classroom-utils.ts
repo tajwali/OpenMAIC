@@ -72,7 +72,7 @@ export async function generateShortTitle(requirement: string): Promise<string | 
         system:
           'You are a course naming assistant. Generate a short, concise course title (max 6 words). ' +
           'Return ONLY the title — no quotes, no punctuation at the end, no extra explanation.',
-        prompt: `Course requirement: "${requirement.slice(0, 300)}"`,
+        prompt: `Generate a short course title (max 6 words) based on this topic: ${requirement.slice(0, 500)}`,
       },
       'generate-short-title',
       undefined,

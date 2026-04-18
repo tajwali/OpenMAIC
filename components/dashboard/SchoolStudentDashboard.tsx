@@ -218,7 +218,7 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
                       </span>
                     </div>
                     <div className="flex items-center gap-2 mb-1">
-                      <p className="font-medium text-sm text-foreground group-hover:text-primary transition-colors line-clamp-2">
+                      <p className="font-medium text-sm text-foreground group-hover:text-primary transition-colors line-clamp-2 flex-1 min-w-0">
                         {displayTitle}
                       </p>
                       <span
