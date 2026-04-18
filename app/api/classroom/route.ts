@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
     const admin = getSupabaseAdmin();
     const { data: row, error: dbError } = await admin
       .from('classrooms')
-      .select('id, title, created_at, scenes')
+      .select('id, title, short_title, created_at, scenes')
       .eq('id', id)
       .single();
 
@@ -90,6 +90,7 @@ export async function GET(request: NextRequest) {
       stage: {
         id: row.id as string,
         name: (row.title as string | null) ?? '',
+        shortTitle: (row.short_title as string | null) ?? null,
         createdAt: new Date(row.created_at as string).getTime(),
         updatedAt: Date.now(),
         language: 'en-US',

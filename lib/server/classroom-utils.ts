@@ -58,8 +58,40 @@ export async function generateCourseTitle(
 }
 
 /**
+ * Generate a short course title (max 6 words) from the requirement.
+ * Used for course identification and the course title field.
+ */
+export async function generateShortTitle(requirement: string): Promise<string | null> {
+  try {
+    const { model: languageModel, modelString } = await resolveModel({});
+    const fallbackModels = await resolveFallbackModels(modelString);
+
+    const result = await callLLM(
+      {
+        model: languageModel,
+        system:
+          'You are a course naming assistant. Generate a short, concise course title (max 6 words). ' +
+          'Return ONLY the title — no quotes, no punctuation at the end, no extra explanation.',
+        prompt: `Course requirement: "${requirement.slice(0, 300)}"`,
+      },
+      'generate-short-title',
+      undefined,
+      undefined,
+      fallbackModels,
+    );
+
+    const title = result.text.trim().replace(/^["']|["']$/g, '').slice(0, 60);
+    if (title.length < 3) return null;
+    log.info(`Generated short course title: "${title}"`);
+    return title;
+  } catch (err) {
+    log.warn('generateShortTitle failed:', err instanceof Error ? err.message : String(err));
+    return null;
+  }
+}
+
+/**
  * Classify a course into one of the known subjects via LLM.
- * Returns the subject UUID, or null on any failure.
  */
 export async function classifySubject(title: string, requirement: string): Promise<string | null> {
   try {

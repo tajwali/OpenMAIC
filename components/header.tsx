@@ -26,9 +26,10 @@ import type { PPTImageElement } from '@/lib/types/slides';
 
 interface HeaderProps {
   readonly currentSceneTitle: string;
+  readonly courseTitle?: string;
 }
 
-export function Header({ currentSceneTitle }: HeaderProps) {
+export function Header({ currentSceneTitle, courseTitle }: HeaderProps) {
   const { t, locale, setLocale } = useI18n();
   const { theme, setTheme } = useTheme();
   const router = useRouter();
@@ -211,8 +212,8 @@ export function Header({ currentSceneTitle }: HeaderProps) {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex flex-col min-w-0">
-            <span className="text-[10px] uppercase tracking-widest font-bold text-gray-400 dark:text-gray-500 mb-0.5">
-              {t('stage.currentScene')}
+            <span className="text-[10px] uppercase tracking-widest font-bold text-gray-400 dark:text-gray-500 mb-0.5 truncate max-w-[400px]">
+              {courseTitle || t('stage.currentScene')}
             </span>
             <h1
               className="text-xl font-bold text-gray-800 dark:text-gray-200 tracking-tight truncate"

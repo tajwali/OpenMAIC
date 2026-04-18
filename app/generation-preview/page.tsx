@@ -47,6 +47,7 @@ function GenerationPreviewContent() {
   const [isComplete] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [streamingOutlines, setStreamingOutlines] = useState<SceneOutline[] | null>(null);
+  const [shortTitle, setShortTitle] = useState<string | null>(null);
   const [truncationWarnings, setTruncationWarnings] = useState<string[]>([]);
   const [webSearchSources, setWebSearchSources] = useState<Array<{ title: string; url: string }>>(
     [],
@@ -395,6 +396,7 @@ function GenerationPreviewContent() {
         const outlineResult = await new Promise<{
           outlines: SceneOutline[];
           languageDirective: string;
+          shortTitle?: string;
         }>((resolve, reject) => {
           const collected: SceneOutline[] = [];
           let directive: string | undefined;
@@ -449,11 +451,13 @@ function GenerationPreviewContent() {
                           setStatusMessage(t('generation.outlineRetrying'));
                         } else if (evt.type === 'done') {
                           directive = evt.languageDirective || directive;
+                          setShortTitle(evt.shortTitle || null);
                           resolve({
                             outlines: evt.outlines || collected,
                             languageDirective:
                               directive ||
                               'Teach in the language that matches the user requirement.',
+                            shortTitle: evt.shortTitle,
                           });
                           return;
                         } else if (evt.type === 'error') {
@@ -488,8 +492,9 @@ function GenerationPreviewContent() {
         outlines = outlineResult.outlines;
         languageDirective = outlineResult.languageDirective;
 
-        // Store languageDirective on the stage
+        // Store languageDirective and shortTitle on the stage
         stage.languageDirective = languageDirective;
+        stage.shortTitle = outlineResult.shortTitle;
 
         const updatedSession = {
           ...currentSession,
@@ -848,6 +853,7 @@ function GenerationPreviewContent() {
             body: JSON.stringify({
               id: _stageId,
               title: _title,
+              shortTitle: stage.shortTitle || _title,
               topic: _topic,
               scenes: scenesWithUrls,
               grade: _grade,

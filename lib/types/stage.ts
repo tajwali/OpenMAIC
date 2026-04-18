@@ -15,6 +15,7 @@ export type Whiteboard = Omit<Slide, 'theme' | 'turningMode' | 'sectionTag' | 't
 export interface Stage {
   id: string;
   name: string;
+  shortTitle?: string;
   description?: string;
   createdAt: number;
   updatedAt: number;

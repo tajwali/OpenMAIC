@@ -18,6 +18,7 @@ export async function POST(req: Request) {
     const body = await req.json() as {
       id?: string;
       title?: string;
+      shortTitle?: string;
       topic?: string;
       scenes?: unknown;
       grade?: string | null;
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
       /** init: true skips LLM title generation — used for the early placeholder upsert */
       init?: boolean;
     };
-    const { id, title, topic, scenes, grade, subjectId, init } = body;
+    const { id, title, shortTitle: bodyShortTitle, topic, scenes, grade, subjectId, init } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'Missing required field: id' }, { status: 400 });
@@ -46,13 +47,15 @@ export async function POST(req: Request) {
     let finalTitle: string;
     let shortTitle: string | null;
     if (init) {
-      finalTitle = (title || requirement || 'Untitled Course').slice(0, 100);
-      shortTitle = requirement.slice(0, 60) || null;
+      finalTitle = (bodyShortTitle || title || requirement || 'Untitled Course').slice(0, 100);
+      shortTitle = (bodyShortTitle || requirement).slice(0, 60) || null;
       log.info(`Course placeholder created for ${id}: "${finalTitle}"`);
     } else {
-      const generatedTitle = await generateCourseTitle(requirement, sceneOutlineTitles);
+      // If we already have a good shortTitle from the stream, use it as the main title too
+      // otherwise run the LLM title generation (which is more descriptive/human)
+      const generatedTitle = bodyShortTitle || await generateCourseTitle(requirement, sceneOutlineTitles);
       finalTitle = (generatedTitle || title || requirement || 'Untitled Course').slice(0, 100);
-      shortTitle = (sceneOutlineTitles[0] ?? requirement).slice(0, 60) || null;
+      shortTitle = (bodyShortTitle || sceneOutlineTitles[0] || requirement).slice(0, 60) || null;
       log.info(`Course title for ${id}: "${finalTitle}"`);
     }
 

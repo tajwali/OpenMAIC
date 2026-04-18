@@ -41,6 +41,7 @@ export async function saveStageData(stageId: string, data: StageStoreData): Prom
     await db.stages.put({
       id: stageId,
       name: data.stage.name || 'Untitled Stage',
+      shortTitle: data.stage.shortTitle,
       description: data.stage.description,
       createdAt: data.stage.createdAt || now,
       updatedAt: now,
@@ -99,7 +100,10 @@ export async function loadStageData(stageId: string): Promise<StageStoreData | n
     log.info(`Loaded stage: ${stageId}, scenes: ${scenes.length}, chats: ${chats.length}`);
 
     return {
-      stage,
+      stage: {
+        ...stage,
+        shortTitle: stage.shortTitle,
+      },
       scenes,
       currentSceneId: stage.currentSceneId || scenes[0]?.id || null,
       chats,

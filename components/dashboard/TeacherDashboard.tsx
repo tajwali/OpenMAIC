@@ -460,8 +460,19 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
                 {courses.map(c => (
                   <div key={c.id} className="bg-card border border-border rounded-xl p-4 flex items-center justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-foreground truncate">{c.title}</p>
-                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="font-medium text-foreground truncate">{c.title}</p>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(c.id)
+                          }}
+                          className="shrink-0 px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground font-mono hover:bg-muted/80 transition-colors cursor-pointer"
+                          title="Click to copy full ID"
+                        >
+                          #{c.id.slice(-6)}
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-xs text-muted-foreground">
                           {new Date(c.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                         </p>
@@ -523,7 +534,20 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
                   <tbody>
                     {assignments.map(a => (
                       <tr key={a.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
-                        <td className="px-4 py-3 text-foreground truncate max-w-[200px]">{a.classroom_title}</td>
+                        <td className="px-4 py-3 text-foreground truncate max-w-[200px]">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate">{a.classroom_title}</span>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(a.classroom_id)
+                              }}
+                              className="shrink-0 px-1 py-0.5 rounded bg-muted text-[10px] text-muted-foreground font-mono hover:bg-muted/80 transition-colors cursor-pointer"
+                              title="Click to copy full ID"
+                            >
+                              #{a.classroom_id.slice(-6)}
+                            </button>
+                          </div>
+                        </td>
                         <td className="px-4 py-3 text-muted-foreground">{a.student_name}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">
                           {new Date(a.assigned_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}

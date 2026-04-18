@@ -49,8 +49,11 @@ export function Stage({
   const { mode, getCurrentScene, scenes, currentSceneId, setCurrentSceneId, generatingOutlines } =
     useStageStore();
   const failedOutlines = useStageStore.use.failedOutlines();
+  const stage = useStageStore((s) => s.stage);
 
   const currentScene = getCurrentScene();
+
+  const courseTitle = stage?.shortTitle || (stage?.name ? (stage.name.length > 50 ? stage.name.slice(0, 50) + '...' : stage.name) : '');
 
   // Layout state from settings store (persisted via localStorage)
   const sidebarCollapsed = useSettingsStore((s) => s.sidebarCollapsed);
@@ -941,7 +944,7 @@ export function Stage({
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 relative">
         {/* Header */}
-        {!isPresenting && <Header currentSceneTitle={currentScene?.title || ''} />}
+        {!isPresenting && <Header currentSceneTitle={currentScene?.title || ''} courseTitle={courseTitle} />}
 
         {/* Canvas Area */}
         <div

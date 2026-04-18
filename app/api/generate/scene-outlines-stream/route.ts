@@ -34,6 +34,7 @@ import type {
 import { apiError } from '@/lib/server/api-response';
 import { createLogger } from '@/lib/logger';
 import { resolveModelFromHeaders } from '@/lib/server/resolve-model';
+import { generateShortTitle } from '@/lib/server/classroom-utils';
 const log = createLogger('Outlines Stream');
 
 export const maxDuration = 300;
@@ -247,6 +248,9 @@ export async function POST(req: NextRequest) {
       `Generating outlines: "${requirements.requirement.substring(0, 50)}" [model=${modelString}]`,
     );
 
+    // Start generating short title in background early to avoid blocking the end of the stream
+    const shortTitlePromise = generateShortTitle(requirements.requirement).catch(() => null);
+
     // Create SSE stream with heartbeat to prevent connection timeout
     const encoder = new TextEncoder();
     const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -386,6 +390,12 @@ export async function POST(req: NextRequest) {
           if (parsedOutlines.length > 0) {
             // Replace sequential gen_img_N/gen_vid_N with globally unique IDs
             const uniquifiedOutlines = uniquifyMediaElementIds(parsedOutlines);
+
+            // Await short title generated in background, fallback to first scene title or prompt
+            const generatedShortTitle = await shortTitlePromise;
+            const firstSceneTitle = parsedOutlines[0]?.title;
+            const shortTitle = (generatedShortTitle || firstSceneTitle || requirements.requirement).slice(0, 60);
+
             // Send done event with all outlines
             const finalDirective =
               canonicalDirective ??
@@ -395,6 +405,7 @@ export async function POST(req: NextRequest) {
               type: 'done',
               outlines: uniquifiedOutlines,
               languageDirective: finalDirective,
+              shortTitle,
             });
             controller.enqueue(encoder.encode(`data: ${doneEvent}\n\n`));
           } else {

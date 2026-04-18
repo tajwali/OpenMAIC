@@ -41,6 +41,7 @@ export interface Snapshot {
 export interface StageRecord {
   id: string; // Primary key
   name: string;
+  shortTitle?: string;
   description?: string;
   createdAt: number; // timestamp
   updatedAt: number; // timestamp
@@ -175,7 +176,7 @@ export function mediaFileKey(stageId: string, elementId: string): string {
 // ==================== Database Definition ====================
 
 const DATABASE_NAME = 'MAIC-Database';
-const _DATABASE_VERSION = 9;
+const _DATABASE_VERSION = 10;
 
 /**
  * MAIC Database Instance
@@ -343,6 +344,20 @@ class MAICDatabase extends Dexie {
           delete stage.language;
         });
       });
+
+    // Version 10: Add shortTitle to stages table
+    this.version(10).stores({
+      stages: 'id, updatedAt',
+      scenes: 'id, stageId, order, [stageId+order]',
+      audioFiles: 'id, createdAt',
+      imageFiles: 'id, createdAt',
+      snapshots: '++id',
+      chatSessions: 'id, stageId, [stageId+createdAt]',
+      playbackState: 'stageId',
+      stageOutlines: 'stageId',
+      mediaFiles: 'id, stageId, [stageId+type]',
+      generatedAgents: 'id, stageId',
+    });
   }
 }
 
