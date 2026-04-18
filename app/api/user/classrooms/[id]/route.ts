@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
+import { promises as fs } from 'fs';
+import path from 'path';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/server/supabase-admin';
+import { CLASSROOMS_DIR } from '@/lib/server/classroom-storage';
 
 /**
  * PATCH /api/user/classrooms/:id
@@ -32,6 +35,11 @@ export async function PATCH(
       .update({ scenes })
       .eq('id', id)
       .eq('user_id', session.user.id);
+
+    // Invalidate local file cache so the next GET serves fresh data from Supabase.
+    // Without this, device B would load stale gen_img_* placeholder IDs from the
+    // cache even after images have been uploaded and Supabase updated with server URLs.
+    void fs.unlink(path.join(CLASSROOMS_DIR, `${id}.json`)).catch(() => {});
 
     return NextResponse.json({ success: true });
   } catch {

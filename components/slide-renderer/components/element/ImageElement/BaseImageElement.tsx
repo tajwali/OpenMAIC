@@ -40,12 +40,26 @@ export function BaseImageElement({ elementInfo }: BaseImageElementProps) {
   });
 
   const imageGenerationEnabled = useSettingsStore((s) => s.imageGenerationEnabled);
-  // Resolve actual src: use objectUrl from store if available, otherwise original src
-  const resolvedSrc = task?.status === 'done' && task.objectUrl ? task.objectUrl : elementInfo.src;
-  const showDisabled = isPlaceholder && !task && !imageGenerationEnabled;
+
+  // When a placeholder has no task (cross-device access: no local blob in IndexedDB),
+  // fall back to the server URL rather than showing an infinite skeleton.
+  // Images are always stored as .png by the media orchestrator.
+  const hasFallbackSrc = isPlaceholder && !task && !!stageId;
+  const serverFallbackSrc = hasFallbackSrc
+    ? `/api/classroom-media/${stageId}/media/${elementInfo.src}.png`
+    : null;
+
+  // Resolve actual src: use objectUrl from store if available, server fallback, or original src
+  const resolvedSrc =
+    task?.status === 'done' && task.objectUrl
+      ? task.objectUrl
+      : serverFallbackSrc ?? elementInfo.src;
+
+  const showDisabled = isPlaceholder && !task && !imageGenerationEnabled && !hasFallbackSrc;
   const showSkeleton =
     isPlaceholder &&
     !showDisabled &&
+    !hasFallbackSrc &&
     (!task || task.status === 'pending' || task.status === 'generating');
   const showError = isPlaceholder && task?.status === 'failed';
 

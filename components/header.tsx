@@ -60,7 +60,7 @@ export function Header({ currentSceneTitle }: HeaderProps) {
         for (const el of scene.content.canvas.elements) {
           if (el.type === 'image') {
             const img = el as PPTImageElement;
-            if (isMediaPlaceholder(img.src) || img.src.startsWith('blob:') || img.src.startsWith('/api/')) {
+            if (isMediaPlaceholder(img.src) || img.src.startsWith('blob:')) {
               // Check if task exists and is NOT done
               const task = mediaTasks[img.src];
               if (!task || task.status === 'failed' || task.status === 'pending') {
