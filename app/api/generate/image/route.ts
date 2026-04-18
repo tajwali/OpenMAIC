@@ -20,6 +20,7 @@ import { generateImage, aspectRatioToDimensions } from '@/lib/media/image-provid
 import { resolveImageApiKey, resolveImageBaseUrl } from '@/lib/server/provider-config';
 import type { ImageProviderId, ImageGenerationOptions } from '@/lib/media/types';
 import { createLogger } from '@/lib/logger';
+import { getPlatformSettings } from '@/lib/server/platform-settings';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
 
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
 
       try {
         const body = (await request.json()) as ImageGenerationOptions;
+        const settings = await getPlatformSettings();
 
         if (!body.prompt) {
           controller.enqueue(
@@ -67,7 +69,7 @@ export async function POST(request: NextRequest) {
         const providerId = (request.headers.get('x-image-provider') || 'seedream') as ImageProviderId;
         const clientApiKey = request.headers.get('x-api-key') || undefined;
         const clientBaseUrl = request.headers.get('x-base-url') || undefined;
-        const clientModel = request.headers.get('x-image-model') || undefined;
+        const clientModel = request.headers.get('x-image-model') || settings.DEFAULT_IMAGE_MODEL;
 
         if (clientBaseUrl && process.env.NODE_ENV === 'production') {
           const ssrfError = await validateUrlForSSRF(clientBaseUrl);

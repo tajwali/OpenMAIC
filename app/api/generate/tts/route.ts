@@ -16,6 +16,7 @@ import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
 import { getSession } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/server/supabase-admin';
+import { getPlatformSettings } from '@/lib/server/platform-settings';
 
 const log = createLogger('TTS API');
 
@@ -24,7 +25,8 @@ export const maxDuration = 30;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { text, audioId, ttsProviderId, ttsModelId, ttsVoice: requestedVoice, ttsSpeed, ttsApiKey, ttsBaseUrl } =
+    const settings = await getPlatformSettings();
+    const { text, audioId, ttsProviderId, ttsModelId, ttsVoice: requestedVoice = settings.DEFAULT_TTS_VOICE, ttsSpeed, ttsApiKey, ttsBaseUrl } =
       body as {
         text: string;
         audioId: string;

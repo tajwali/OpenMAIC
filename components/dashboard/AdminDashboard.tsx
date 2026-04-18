@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Shield, LogOut, Plus, X, Users, BookOpen, Trash2, Pencil, Check, UserCircle } from 'lucide-react'
+import { Shield, LogOut, Plus, X, Users, BookOpen, Trash2, Pencil, Check, UserCircle, Settings } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -26,7 +26,21 @@ interface UserRecord {
   created_at: string | null
 }
 
-type Tab = 'users' | 'subjects'
+type Tab = 'users' | 'subjects' | 'platform'
+
+interface PlatformSettings {
+  DEFAULT_MODEL: string
+  DEFAULT_IMAGE_MODEL: string
+  DEFAULT_TTS_VOICE: string
+  MAX_SCENES: number
+  ALLOW_MATURE_STUDENTS: boolean
+}
+
+interface PlatformSettingsResponse {
+  settings: PlatformSettings
+  overrides: string[]
+  envDefaults: Record<string, string>
+}
 
 type UserRole = 'admin' | 'teacher' | 'school_student' | 'mature_student'
 
@@ -75,6 +89,14 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
   const [newName, setNewName] = useState('')
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
+
+  // Platform tab state
+  const [platformData, setPlatformData] = useState<PlatformSettingsResponse | null>(null)
+  const [platformLoading, setPlatformLoading] = useState(true)
+  const [platformSaving, setPlatformSaving] = useState(false)
+  const [platformError, setPlatformError] = useState<string | null>(null)
+  const [platformSuccess, setPlatformSuccess] = useState(false)
+  const [editPlatform, setEditPlatform] = useState<Partial<PlatformSettings>>({})
 
   useEffect(() => {
     fetch('/api/user/stats').then(r => r.ok ? r.json() : {}).then((data: Record<string, unknown>) => {
@@ -205,7 +227,48 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
       .finally(() => setSubjectsLoading(false))
   }, [])
 
-  useEffect(() => { loadSubjects() }, [loadSubjects])
+  const loadPlatformSettings = useCallback(() => {
+    setPlatformLoading(true)
+    setPlatformSuccess(false)
+    fetch('/api/admin/settings')
+      .then(r => r.ok ? r.json() : null)
+      .then((data: PlatformSettingsResponse | null) => {
+        if (data) {
+          setPlatformData(data)
+          setEditPlatform(data.settings)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setPlatformLoading(false))
+  }, [])
+
+  useEffect(() => { loadUsers() }, [loadUsers])
+  useEffect(() => { if (tab === 'subjects') loadSubjects() }, [tab, loadSubjects])
+  useEffect(() => { if (tab === 'platform') loadPlatformSettings() }, [tab, loadPlatformSettings])
+
+  const handleSavePlatform = async () => {
+    setPlatformSaving(true)
+    setPlatformError(null)
+    setPlatformSuccess(false)
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editPlatform),
+      })
+      if (res.ok) {
+        setPlatformSuccess(true)
+        loadPlatformSettings()
+      } else {
+        const err = await res.json()
+        setPlatformError(err.error || 'Failed to save settings')
+      }
+    } catch {
+      setPlatformError('Network error')
+    } finally {
+      setPlatformSaving(false)
+    }
+  }
 
   const handleAddSubject = async () => {
     if (!newName.trim()) return
@@ -275,6 +338,7 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
           {([
             { id: 'users', label: 'Users', icon: <Users className="w-4 h-4" /> },
             { id: 'subjects', label: 'Subjects', icon: <BookOpen className="w-4 h-4" /> },
+            { id: 'platform', label: 'Platform Settings', icon: <Settings className="w-4 h-4" /> },
           ] as { id: Tab; label: string; icon: React.ReactNode }[]).map(t => (
             <button
               key={t.id}
@@ -588,6 +652,139 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
               </div>
               {addError && <p className="text-xs text-red-500 mt-2">{addError}</p>}
             </div>
+          </section>
+        )}
+        {/* ── Platform Settings Tab ── */}
+        {tab === 'platform' && (
+          <section className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-border">
+              <h3 className="font-semibold text-foreground">Global Platform Settings</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Overrides for environment variables. Changes are cached for 5 minutes.</p>
+            </div>
+
+            {platformLoading ? (
+              <div className="py-12 flex justify-center">
+                <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* DEFAULT_MODEL */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      Default LLM Model
+                      {platformData?.overrides.includes('DEFAULT_MODEL') && (
+                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">DB OVERRIDE</span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      value={editPlatform.DEFAULT_MODEL}
+                      onChange={e => setEditPlatform({ ...editPlatform, DEFAULT_MODEL: e.target.value })}
+                      placeholder={platformData?.envDefaults.DEFAULT_MODEL}
+                      className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary/50 outline-none"
+                    />
+                    <p className="text-[10px] text-muted-foreground">Env default: {platformData?.envDefaults.DEFAULT_MODEL}</p>
+                  </div>
+
+                  {/* DEFAULT_IMAGE_MODEL */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      Default Image Model
+                      {platformData?.overrides.includes('DEFAULT_IMAGE_MODEL') && (
+                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">DB OVERRIDE</span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      value={editPlatform.DEFAULT_IMAGE_MODEL}
+                      onChange={e => setEditPlatform({ ...editPlatform, DEFAULT_IMAGE_MODEL: e.target.value })}
+                      placeholder={platformData?.envDefaults.DEFAULT_IMAGE_MODEL}
+                      className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary/50 outline-none"
+                    />
+                    <p className="text-[10px] text-muted-foreground">Env default: {platformData?.envDefaults.DEFAULT_IMAGE_MODEL}</p>
+                  </div>
+
+                  {/* DEFAULT_TTS_VOICE */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      Default TTS Voice
+                      {platformData?.overrides.includes('DEFAULT_TTS_VOICE') && (
+                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">DB OVERRIDE</span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      value={editPlatform.DEFAULT_TTS_VOICE}
+                      onChange={e => setEditPlatform({ ...editPlatform, DEFAULT_TTS_VOICE: e.target.value })}
+                      placeholder={platformData?.envDefaults.DEFAULT_TTS_VOICE}
+                      className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary/50 outline-none"
+                    />
+                    <p className="text-[10px] text-muted-foreground">Env default: {platformData?.envDefaults.DEFAULT_TTS_VOICE}</p>
+                  </div>
+
+                  {/* MAX_SCENES */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      Max Scenes per Course
+                      {platformData?.overrides.includes('MAX_SCENES') && (
+                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">DB OVERRIDE</span>
+                      )}
+                    </label>
+                    <input
+                      type="number"
+                      value={editPlatform.MAX_SCENES}
+                      onChange={e => setEditPlatform({ ...editPlatform, MAX_SCENES: parseInt(e.target.value) || 10 })}
+                      className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary/50 outline-none"
+                    />
+                    <p className="text-[10px] text-muted-foreground">Env default: {platformData?.envDefaults.MAX_SCENES}</p>
+                  </div>
+
+                  {/* ALLOW_MATURE_STUDENTS */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      Allow Direct Student Signup
+                      {platformData?.overrides.includes('ALLOW_MATURE_STUDENTS') && (
+                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">DB OVERRIDE</span>
+                      )}
+                    </label>
+                    <div className="flex items-center gap-4 py-2">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          checked={editPlatform.ALLOW_MATURE_STUDENTS === true}
+                          onChange={() => setEditPlatform({ ...editPlatform, ALLOW_MATURE_STUDENTS: true })}
+                        />
+                        <span className="text-sm">Enabled</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          checked={editPlatform.ALLOW_MATURE_STUDENTS === false}
+                          onChange={() => setEditPlatform({ ...editPlatform, ALLOW_MATURE_STUDENTS: false })}
+                        />
+                        <span className="text-sm">Disabled</span>
+                      </label>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">If disabled, only school students with an invite code can register.</p>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-border flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleSavePlatform}
+                      disabled={platformSaving}
+                      className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                    >
+                      {platformSaving ? 'Saving…' : 'Save Platform Settings'}
+                    </button>
+                    {platformSuccess && <span className="text-sm text-green-600 font-medium">✓ Settings saved successfully</span>}
+                    {platformError && <span className="text-sm text-red-500 font-medium">Error: {platformError}</span>}
+                  </div>
+                </div>
+              </div>
+            )}
           </section>
         )}
       </main>

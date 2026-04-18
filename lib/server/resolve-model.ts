@@ -10,6 +10,7 @@ import { getModel, parseModelString, type ModelWithInfo } from '@/lib/ai/provide
 import { resolveApiKey, resolveBaseUrl, resolveProxy } from '@/lib/server/provider-config';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
 import type { ProviderId } from '@/lib/types/provider';
+import { getPlatformSettings } from './platform-settings';
 
 export interface ResolvedModel extends ModelWithInfo {
   /** Original model string (e.g. "google:gemini-2.0-flash") */
@@ -20,35 +21,26 @@ export interface ResolvedModel extends ModelWithInfo {
   apiKey: string;
 }
 
-// ---------------------------------------------------------------------------
-// Model fallback chain
-//
-// Ordered list of models to try when the primary is overloaded or unavailable.
-// The first entry wins (primary model). Each entry can be overridden by the
-// DEFAULT_MODEL env var, which replaces the first slot.
-// ---------------------------------------------------------------------------
-const MODEL_FALLBACK_CHAIN: string[] = [
-  process.env.DEFAULT_MODEL,
-  'google:gemini-2.0-flash',
-  'google:gemini-1.5-flash',
-].filter((s): s is string => typeof s === 'string' && s.length > 0);
-
-// Deduplicate while preserving order (env value may match a built-in entry)
-const seen = new Set<string>();
-const DEDUPED_CHAIN: string[] = [];
-for (const m of MODEL_FALLBACK_CHAIN) {
-  if (!seen.has(m)) { seen.add(m); DEDUPED_CHAIN.push(m); }
-}
-
-/** The primary model string — first in the chain. */
-export const DEFAULT_LLM_MODEL = DEDUPED_CHAIN[0];
-
 /**
  * Returns the full ordered model fallback chain.
  * Index 0 is the primary; subsequent entries are tried on overload/rate-limit.
  */
-export function getModelFallbackChain(): string[] {
-  return [...DEDUPED_CHAIN];
+export async function getModelFallbackChain(): Promise<string[]> {
+  const settings = await getPlatformSettings();
+  
+  const chain: string[] = [
+    settings.DEFAULT_MODEL,
+    'google:gemini-2.0-flash',
+    'google:gemini-1.5-flash',
+  ].filter((s): s is string => typeof s === 'string' && s.length > 0);
+
+  // Deduplicate while preserving order
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  for (const m of chain) {
+    if (!seen.has(m)) { seen.add(m); deduped.push(m); }
+  }
+  return deduped;
 }
 
 /**
@@ -63,7 +55,13 @@ export async function resolveModel(params: {
   providerType?: string;
   requiresApiKey?: boolean;
 }): Promise<ResolvedModel> {
-  const modelString = params.modelString || DEFAULT_LLM_MODEL;
+  let modelString = params.modelString;
+  
+  if (!modelString) {
+    const settings = await getPlatformSettings();
+    modelString = settings.DEFAULT_MODEL;
+  }
+
   const { providerId, modelId } = parseModelString(modelString);
 
   // SSRF validation applies only to client-supplied base URLs.
@@ -119,8 +117,9 @@ export async function resolveModelFromHeaders(req: NextRequest): Promise<Resolve
  */
 export async function resolveFallbackModels(primaryModelString: string): Promise<ResolvedModel['model'][]> {
   const fallbacks: ResolvedModel['model'][] = [];
+  const chain = await getModelFallbackChain();
   
-  for (const s of DEDUPED_CHAIN) {
+  for (const s of chain) {
     if (s === primaryModelString) continue;
     try {
       const resolved = await resolveModel({ modelString: s });
