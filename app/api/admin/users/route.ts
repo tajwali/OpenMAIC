@@ -35,19 +35,32 @@ export async function GET() {
 
     if (profilesError) return NextResponse.json({ error: profilesError.message }, { status: 500 })
 
-    // Build email + banned map from GoTrue response
+    // Build email + metadata map from GoTrue response
     const emailMap = new Map<string, string>()
     const bannedMap = new Map<string, boolean>()
+    const metadataMap = new Map<string, { last_login?: string; created_at?: string }>()
+
     if (gotrue.ok) {
-      const body = await gotrue.json() as { users?: { id: string; email?: string; banned_until?: string }[] }
+      const body = await gotrue.json() as {
+        users?: {
+          id: string;
+          email?: string;
+          banned_until?: string;
+          last_sign_in_at?: string;
+          created_at?: string;
+        }[]
+      }
       for (const u of body.users ?? []) {
         emailMap.set(u.id, u.email ?? '')
         if (u.banned_until && new Date(u.banned_until) > new Date()) {
           bannedMap.set(u.id, true)
         }
+        metadataMap.set(u.id, {
+          last_login: u.last_sign_in_at,
+          created_at: u.created_at,
+        })
       }
     }
-    // If GoTrue list fails, emails will just be empty strings — non-fatal
 
     const users = (profiles ?? []).map(p => ({
       id: p.id,
@@ -58,6 +71,8 @@ export async function GET() {
       grade: p.grade,
       school: p.school,
       disabled: bannedMap.get(p.id as string) ?? false,
+      last_login_at: metadataMap.get(p.id as string)?.last_login ?? null,
+      created_at: metadataMap.get(p.id as string)?.created_at ?? null,
     }))
 
     return NextResponse.json(users)

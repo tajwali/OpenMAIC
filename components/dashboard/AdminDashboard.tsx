@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Shield, LogOut, Plus, X, Users, BookOpen, Trash2, Pencil, Check, UserCircle } from 'lucide-react'
 
@@ -22,6 +22,8 @@ interface UserRecord {
   grade: string | null
   school: string | null
   disabled: boolean
+  last_login_at: string | null
+  created_at: string | null
 }
 
 type Tab = 'users' | 'subjects'
@@ -381,10 +383,11 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
               ) : (
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-border bg-muted/30">
-                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">Name</th>
-                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">Email</th>
+                    <tr className="border-b border-border bg-muted/30 text-[11px] uppercase tracking-wider">
+                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">User</th>
                       <th className="text-left px-4 py-3 font-medium text-muted-foreground">Role</th>
+                      <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Created</th>
+                      <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Last Login</th>
                       <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
                     </tr>
                   </thead>
@@ -392,24 +395,36 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
                     {users.map(u => {
                       const isSelf = u.id === userId
                       const isEditing = editingUserId === u.id
+                      const formatDate = (d: string | null) => d ? new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' }) : '—'
+                      const formatTime = (d: string | null) => d ? new Date(d).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : ''
+
                       return (
-                        <>
-                          <tr key={u.id} className={`hover:bg-muted/20 transition-colors ${u.disabled ? 'opacity-60' : ''}`}>
-                            <td className="px-4 py-3 font-medium text-foreground">
-                              <div className="flex items-center gap-2">
-                                {u.display_name || <span className="text-muted-foreground italic">—</span>}
-                                {u.disabled && (
-                                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400">
-                                    disabled
-                                  </span>
-                                )}
+                        <React.Fragment key={u.id}>
+                          <tr className={`hover:bg-muted/20 transition-colors ${u.disabled ? 'opacity-60' : ''}`}>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-col">
+                                <span className="font-medium text-foreground flex items-center gap-2">
+                                  {u.display_name || <span className="text-muted-foreground italic">—</span>}
+                                  {u.disabled && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold uppercase">
+                                      banned
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="text-xs text-muted-foreground">{u.email}</span>
                               </div>
                             </td>
-                            <td className="px-4 py-3 text-muted-foreground">{u.email}</td>
                             <td className="px-4 py-3">
                               <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_BADGE[u.role] ?? 'bg-muted text-muted-foreground'}`}>
                                 {u.role}
                               </span>
+                            </td>
+                            <td className="px-4 py-3 text-xs text-muted-foreground hidden sm:table-cell">
+                              {formatDate(u.created_at)}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-muted-foreground hidden md:table-cell">
+                              <div>{formatDate(u.last_login_at)}</div>
+                              <div className="text-[10px] opacity-70">{formatTime(u.last_login_at)}</div>
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center justify-end gap-2">
@@ -427,7 +442,7 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
                                 <button
                                   onClick={() => isEditing ? setEditingUserId(null) : openEditUser(u)}
                                   className={`p-1.5 rounded-lg transition-colors ${isEditing ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
-                                  title="Edit name / password"
+                                  title="Edit name / Reset password"
                                 >
                                   <Pencil className="w-4 h-4" />
                                 </button>
@@ -435,7 +450,7 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
                                   onClick={() => handleToggleDisable(u.id, u.disabled)}
                                   disabled={isSelf}
                                   className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${u.disabled ? 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20' : 'text-muted-foreground hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20'}`}
-                                  title={u.disabled ? 'Re-enable account' : 'Disable account'}
+                                  title={u.disabled ? 'Enable account (unban)' : 'Disable account (ban)'}
                                 >
                                   {u.disabled ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
                                 </button>
@@ -452,41 +467,49 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
                           </tr>
                           {isEditing && (
                             <tr key={`${u.id}-edit`} className="bg-muted/20 border-b border-border">
-                              <td colSpan={4} className="px-4 py-3">
+                              <td colSpan={5} className="px-4 py-3">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <input
-                                    type="text"
-                                    value={editName}
-                                    onChange={e => setEditName(e.target.value)}
-                                    placeholder="Display name"
-                                    className="px-3 py-1.5 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 w-44"
-                                  />
-                                  <input
-                                    type="password"
-                                    value={editPassword}
-                                    onChange={e => setEditPassword(e.target.value)}
-                                    placeholder="New password (optional)"
-                                    className="px-3 py-1.5 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 w-52"
-                                  />
-                                  {editError && <span className="text-xs text-red-500">{editError}</span>}
-                                  <button
-                                    onClick={() => handleSaveEdit(u.id)}
-                                    disabled={editSaving || (!editName.trim() && !editPassword)}
-                                    className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-                                  >
-                                    {editSaving ? 'Saving…' : 'Save'}
-                                  </button>
-                                  <button
-                                    onClick={() => setEditingUserId(null)}
-                                    className="px-3 py-1.5 border border-border rounded-lg text-xs text-muted-foreground hover:bg-muted transition-colors"
-                                  >
-                                    Cancel
-                                  </button>
+                                  <div className="flex flex-col gap-1">
+                                    <label className="text-[10px] text-muted-foreground uppercase font-bold">Display Name</label>
+                                    <input
+                                      type="text"
+                                      value={editName}
+                                      onChange={e => setEditName(e.target.value)}
+                                      placeholder="Display name"
+                                      className="px-3 py-1.5 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 w-44"
+                                    />
+                                  </div>
+                                  <div className="flex flex-col gap-1">
+                                    <label className="text-[10px] text-muted-foreground uppercase font-bold">Reset Password</label>
+                                    <input
+                                      type="password"
+                                      value={editPassword}
+                                      onChange={e => setEditPassword(e.target.value)}
+                                      placeholder="New password (optional)"
+                                      className="px-3 py-1.5 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 w-52"
+                                    />
+                                  </div>
+                                  <div className="flex items-end gap-2 mt-4">
+                                    <button
+                                      onClick={() => handleSaveEdit(u.id)}
+                                      disabled={editSaving || (!editName.trim() && !editPassword)}
+                                      className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                                    >
+                                      {editSaving ? 'Saving…' : 'Save Changes'}
+                                    </button>
+                                    <button
+                                      onClick={() => setEditingUserId(null)}
+                                      className="px-3 py-1.5 border border-border rounded-lg text-xs text-muted-foreground hover:bg-muted transition-colors"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                  {editError && <div className="w-full text-xs text-red-500 mt-1 font-medium">{editError}</div>}
                                 </div>
                               </td>
                             </tr>
                           )}
-                        </>
+                        </React.Fragment>
                       )
                     })}
                   </tbody>
