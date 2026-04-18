@@ -34,7 +34,6 @@ import type { ImageProviderId } from '@/lib/media/types';
 import type { VideoProviderId } from '@/lib/media/types';
 import type { TTSProviderId } from '@/lib/audio/types';
 import { splitLongSpeechActions } from '@/lib/audio/tts-utils';
-import { getPlatformSettings } from './platform-settings';
 
 const log = createLogger('ClassroomMedia');
 
@@ -91,7 +90,6 @@ export async function generateMediaForClassroom(
   const videoRequests = requests.filter((r) => r.type === 'video' && videoProviderIds.length > 0);
 
   const generateImages = async () => {
-    const settings = await getPlatformSettings();
     for (const req of imageRequests) {
       try {
         const providerId = imageProviderIds[0] as ImageProviderId;
@@ -101,7 +99,7 @@ export async function generateMediaForClassroom(
           continue;
         }
         const providerConfig = IMAGE_PROVIDERS[providerId];
-        const model = settings.DEFAULT_IMAGE_MODEL || providerConfig?.models?.[0]?.id;
+        const model = providerConfig?.models?.[0]?.id;
 
         const result = await generateImage(
           { providerId, apiKey, baseUrl: resolveImageBaseUrl(providerId), model },
@@ -226,11 +224,10 @@ export async function generateTTSForClassroom(
     log.warn(`No API key for TTS provider "${providerId}", skipping TTS generation`);
     return;
   }
-  const settings = await getPlatformSettings();
   const ttsBaseUrl =
     resolveTTSBaseUrl(providerId) ||
     TTS_PROVIDERS[providerId as keyof typeof TTS_PROVIDERS]?.defaultBaseUrl;
-  const voice = settings.DEFAULT_TTS_VOICE || DEFAULT_TTS_VOICES[providerId as keyof typeof DEFAULT_TTS_VOICES] || 'default';
+  const voice = DEFAULT_TTS_VOICES[providerId as keyof typeof DEFAULT_TTS_VOICES] || 'default';
   const format =
     TTS_PROVIDERS[providerId as keyof typeof TTS_PROVIDERS]?.supportedFormats?.[0] || 'mp3';
 
@@ -250,7 +247,7 @@ export async function generateTTSForClassroom(
         const result = await generateTTS(
           {
             providerId,
-            modelId: settings.DEFAULT_MODEL || DEFAULT_TTS_MODELS[providerId as keyof typeof DEFAULT_TTS_MODELS] || '',
+            modelId: DEFAULT_TTS_MODELS[providerId as keyof typeof DEFAULT_TTS_MODELS] || '',
             apiKey,
             baseUrl: ttsBaseUrl,
             voice,

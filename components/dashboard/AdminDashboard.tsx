@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Shield, LogOut, Plus, X, Users, BookOpen, Trash2, Pencil, Check, UserCircle, Settings } from 'lucide-react'
+import { Shield, LogOut, Plus, X, Users, BookOpen, Trash2, Pencil, Check, UserCircle, BarChart3 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -26,21 +26,20 @@ interface UserRecord {
   created_at: string | null
 }
 
-type Tab = 'users' | 'subjects' | 'platform'
-
-interface PlatformSettings {
-  DEFAULT_MODEL: string
-  DEFAULT_IMAGE_MODEL: string
-  DEFAULT_TTS_VOICE: string
-  MAX_SCENES: number
-  ALLOW_MATURE_STUDENTS: boolean
+interface StatsData {
+  userRoles: Record<string, number>
+  totalCourses: number
+  totalScenes: number
+  popularSubjects: { id: string; name: string; icon: string; count: number }[]
+  recentActivity: { id: string; title: string; teacher_name: string; created_at: string }[]
+  storage: {
+    mediaFilesCount: number
+    totalBytes: number
+    formattedSize: string
+  }
 }
 
-interface PlatformSettingsResponse {
-  settings: PlatformSettings
-  overrides: string[]
-  envDefaults: Record<string, string>
-}
+type Tab = 'users' | 'subjects' | 'stats'
 
 type UserRole = 'admin' | 'teacher' | 'school_student' | 'mature_student'
 
@@ -90,13 +89,9 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
 
-  // Platform tab state
-  const [platformData, setPlatformData] = useState<PlatformSettingsResponse | null>(null)
-  const [platformLoading, setPlatformLoading] = useState(true)
-  const [platformSaving, setPlatformSaving] = useState(false)
-  const [platformError, setPlatformError] = useState<string | null>(null)
-  const [platformSuccess, setPlatformSuccess] = useState(false)
-  const [editPlatform, setEditPlatform] = useState<Partial<PlatformSettings>>({})
+  // Stats tab state
+  const [stats, setStats] = useState<StatsData | null>(null)
+  const [statsLoading, setStatsLoading] = useState(true)
 
   useEffect(() => {
     fetch('/api/user/stats').then(r => r.ok ? r.json() : {}).then((data: Record<string, unknown>) => {
@@ -227,48 +222,7 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
       .finally(() => setSubjectsLoading(false))
   }, [])
 
-  const loadPlatformSettings = useCallback(() => {
-    setPlatformLoading(true)
-    setPlatformSuccess(false)
-    fetch('/api/admin/settings')
-      .then(r => r.ok ? r.json() : null)
-      .then((data: PlatformSettingsResponse | null) => {
-        if (data) {
-          setPlatformData(data)
-          setEditPlatform(data.settings)
-        }
-      })
-      .catch(() => {})
-      .finally(() => setPlatformLoading(false))
-  }, [])
-
-  useEffect(() => { loadUsers() }, [loadUsers])
   useEffect(() => { if (tab === 'subjects') loadSubjects() }, [tab, loadSubjects])
-  useEffect(() => { if (tab === 'platform') loadPlatformSettings() }, [tab, loadPlatformSettings])
-
-  const handleSavePlatform = async () => {
-    setPlatformSaving(true)
-    setPlatformError(null)
-    setPlatformSuccess(false)
-    try {
-      const res = await fetch('/api/admin/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editPlatform),
-      })
-      if (res.ok) {
-        setPlatformSuccess(true)
-        loadPlatformSettings()
-      } else {
-        const err = await res.json()
-        setPlatformError(err.error || 'Failed to save settings')
-      }
-    } catch {
-      setPlatformError('Network error')
-    } finally {
-      setPlatformSaving(false)
-    }
-  }
 
   const handleAddSubject = async () => {
     if (!newName.trim()) return
@@ -300,6 +254,21 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
       if (res.ok) loadSubjects()
     } catch { /* ignore */ }
   }
+
+  // ─── Stats ────────────────────────────────────────────────────────────────
+
+  const loadStats = useCallback(() => {
+    setStatsLoading(true)
+    fetch('/api/admin/stats')
+      .then(r => r.ok ? r.json() : null)
+      .then((data: StatsData | null) => {
+        if (data) setStats(data)
+      })
+      .catch(() => {})
+      .finally(() => setStatsLoading(false))
+  }, [])
+
+  useEffect(() => { if (tab === 'stats') loadStats() }, [tab, loadStats])
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -338,7 +307,7 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
           {([
             { id: 'users', label: 'Users', icon: <Users className="w-4 h-4" /> },
             { id: 'subjects', label: 'Subjects', icon: <BookOpen className="w-4 h-4" /> },
-            { id: 'platform', label: 'Platform Settings', icon: <Settings className="w-4 h-4" /> },
+            { id: 'stats', label: 'Statistics', icon: <BarChart3 className="w-4 h-4" /> },
           ] as { id: Tab; label: string; icon: React.ReactNode }[]).map(t => (
             <button
               key={t.id}
@@ -654,138 +623,137 @@ export default function AdminDashboard({ userEmail, displayName, userId }: Props
             </div>
           </section>
         )}
-        {/* ── Platform Settings Tab ── */}
-        {tab === 'platform' && (
-          <section className="bg-card border border-border rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-border">
-              <h3 className="font-semibold text-foreground">Global Platform Settings</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Overrides for environment variables. Changes are cached for 5 minutes.</p>
-            </div>
 
-            {platformLoading ? (
-              <div className="py-12 flex justify-center">
-                <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        {/* ── Stats Tab ── */}
+        {tab === 'stats' && (
+          <div className="space-y-6">
+            {statsLoading ? (
+              <div className="py-20 flex justify-center">
+                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : !stats ? (
+              <div className="py-12 text-center text-muted-foreground bg-muted/20 rounded-xl border border-dashed border-border">
+                Failed to load statistics
               </div>
             ) : (
-              <div className="p-6 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* DEFAULT_MODEL */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium flex items-center gap-2">
-                      Default LLM Model
-                      {platformData?.overrides.includes('DEFAULT_MODEL') && (
-                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">DB OVERRIDE</span>
-                      )}
-                    </label>
-                    <input
-                      type="text"
-                      value={editPlatform.DEFAULT_MODEL}
-                      onChange={e => setEditPlatform({ ...editPlatform, DEFAULT_MODEL: e.target.value })}
-                      placeholder={platformData?.envDefaults.DEFAULT_MODEL}
-                      className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary/50 outline-none"
-                    />
-                    <p className="text-[10px] text-muted-foreground">Env default: {platformData?.envDefaults.DEFAULT_MODEL}</p>
+              <>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Total Courses</p>
+                    <p className="text-3xl font-black text-foreground">{stats.totalCourses}</p>
                   </div>
-
-                  {/* DEFAULT_IMAGE_MODEL */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium flex items-center gap-2">
-                      Default Image Model
-                      {platformData?.overrides.includes('DEFAULT_IMAGE_MODEL') && (
-                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">DB OVERRIDE</span>
-                      )}
-                    </label>
-                    <input
-                      type="text"
-                      value={editPlatform.DEFAULT_IMAGE_MODEL}
-                      onChange={e => setEditPlatform({ ...editPlatform, DEFAULT_IMAGE_MODEL: e.target.value })}
-                      placeholder={platformData?.envDefaults.DEFAULT_IMAGE_MODEL}
-                      className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary/50 outline-none"
-                    />
-                    <p className="text-[10px] text-muted-foreground">Env default: {platformData?.envDefaults.DEFAULT_IMAGE_MODEL}</p>
+                  <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Total Scenes</p>
+                    <p className="text-3xl font-black text-foreground">{stats.totalScenes}</p>
                   </div>
-
-                  {/* DEFAULT_TTS_VOICE */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium flex items-center gap-2">
-                      Default TTS Voice
-                      {platformData?.overrides.includes('DEFAULT_TTS_VOICE') && (
-                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">DB OVERRIDE</span>
-                      )}
-                    </label>
-                    <input
-                      type="text"
-                      value={editPlatform.DEFAULT_TTS_VOICE}
-                      onChange={e => setEditPlatform({ ...editPlatform, DEFAULT_TTS_VOICE: e.target.value })}
-                      placeholder={platformData?.envDefaults.DEFAULT_TTS_VOICE}
-                      className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary/50 outline-none"
-                    />
-                    <p className="text-[10px] text-muted-foreground">Env default: {platformData?.envDefaults.DEFAULT_TTS_VOICE}</p>
-                  </div>
-
-                  {/* MAX_SCENES */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium flex items-center gap-2">
-                      Max Scenes per Course
-                      {platformData?.overrides.includes('MAX_SCENES') && (
-                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">DB OVERRIDE</span>
-                      )}
-                    </label>
-                    <input
-                      type="number"
-                      value={editPlatform.MAX_SCENES}
-                      onChange={e => setEditPlatform({ ...editPlatform, MAX_SCENES: parseInt(e.target.value) || 10 })}
-                      className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-primary/50 outline-none"
-                    />
-                    <p className="text-[10px] text-muted-foreground">Env default: {platformData?.envDefaults.MAX_SCENES}</p>
-                  </div>
-
-                  {/* ALLOW_MATURE_STUDENTS */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium flex items-center gap-2">
-                      Allow Direct Student Signup
-                      {platformData?.overrides.includes('ALLOW_MATURE_STUDENTS') && (
-                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">DB OVERRIDE</span>
-                      )}
-                    </label>
-                    <div className="flex items-center gap-4 py-2">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          checked={editPlatform.ALLOW_MATURE_STUDENTS === true}
-                          onChange={() => setEditPlatform({ ...editPlatform, ALLOW_MATURE_STUDENTS: true })}
-                        />
-                        <span className="text-sm">Enabled</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          checked={editPlatform.ALLOW_MATURE_STUDENTS === false}
-                          onChange={() => setEditPlatform({ ...editPlatform, ALLOW_MATURE_STUDENTS: false })}
-                        />
-                        <span className="text-sm">Disabled</span>
-                      </label>
+                  <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Storage Usage</p>
+                    <div className="flex items-baseline gap-2">
+                      <p className="text-3xl font-black text-foreground">{stats.storage.formattedSize}</p>
+                      <p className="text-xs text-muted-foreground">{stats.storage.mediaFilesCount} files</p>
                     </div>
-                    <p className="text-[10px] text-muted-foreground">If disabled, only school students with an invite code can register.</p>
+                  </div>
+                  <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Total Users</p>
+                    <p className="text-3xl font-black text-foreground">{Object.values(stats.userRoles).reduce((a, b) => a + b, 0)}</p>
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-border flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={handleSavePlatform}
-                      disabled={platformSaving}
-                      className="px-6 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-                    >
-                      {platformSaving ? 'Saving…' : 'Save Platform Settings'}
-                    </button>
-                    {platformSuccess && <span className="text-sm text-green-600 font-medium">✓ Settings saved successfully</span>}
-                    {platformError && <span className="text-sm text-red-500 font-medium">Error: {platformError}</span>}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* User Roles */}
+                  <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+                    <div className="px-5 py-4 border-b border-border bg-muted/10">
+                      <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Users by Role</h3>
+                    </div>
+                    <div className="p-5 space-y-4">
+                      {Object.entries(stats.userRoles).sort((a, b) => b[1] - a[1]).map(([role, count]) => (
+                        <div key={role} className="space-y-1.5">
+                          <div className="flex justify-between text-sm">
+                            <span className="font-medium capitalize">{role.replace('_', ' ')}</span>
+                            <span className="font-bold">{count}</span>
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                            <div
+                              className={`h-full ${role === 'admin' ? 'bg-red-500' : role === 'teacher' ? 'bg-blue-500' : 'bg-green-500'}`}
+                              style={{ width: `${(count / Object.values(stats.userRoles).reduce((a, b) => a + b, 0)) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Popular Subjects */}
+                  <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+                    <div className="px-5 py-4 border-b border-border bg-muted/10">
+                      <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Popular Subjects</h3>
+                    </div>
+                    <div className="p-0">
+                      {stats.popularSubjects.length === 0 ? (
+                        <p className="p-8 text-center text-sm text-muted-foreground italic">No course data yet</p>
+                      ) : (
+                        <table className="w-full text-sm">
+                          <tbody className="divide-y divide-border">
+                            {stats.popularSubjects.map(s => (
+                              <tr key={s.id} className="hover:bg-muted/10 transition-colors">
+                                <td className="px-5 py-3 flex items-center gap-3">
+                                  <span className="text-lg">{s.icon}</span>
+                                  <span className="font-medium">{s.name}</span>
+                                </td>
+                                <td className="px-5 py-3 text-right font-bold text-muted-foreground">
+                                  {s.count} courses
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
+
+                {/* Recent Activity */}
+                <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+                  <div className="px-5 py-4 border-b border-border bg-muted/10 flex justify-between items-center">
+                    <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Recent Activity</h3>
+                    <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">Last 10 courses</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted/30 border-b border-border text-[10px] uppercase tracking-widest text-muted-foreground">
+                          <th className="text-left px-5 py-2 font-medium">Course Title</th>
+                          <th className="text-left px-5 py-2 font-medium">Teacher</th>
+                          <th className="text-right px-5 py-2 font-medium">Generated</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {stats.recentActivity.map(course => (
+                          <tr key={course.id} className="hover:bg-muted/10 transition-colors">
+                            <td className="px-5 py-3 font-medium text-foreground truncate max-w-[200px]" title={course.title}>
+                              {course.title}
+                            </td>
+                            <td className="px-5 py-3 text-muted-foreground truncate max-w-[150px]">
+                              {course.teacher_name || 'System'}
+                            </td>
+                            <td className="px-5 py-3 text-right text-xs text-muted-foreground whitespace-nowrap">
+                              {new Date(course.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                          </tr>
+                        ))}
+                        {stats.recentActivity.length === 0 && (
+                          <tr>
+                            <td colSpan={3} className="px-5 py-8 text-center text-muted-foreground italic">No recent activity</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
             )}
-          </section>
+          </div>
         )}
       </main>
     </div>

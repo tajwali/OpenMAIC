@@ -3,7 +3,6 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/server/supabase-admin'
 import { checkRateLimit } from '@/lib/server/rate-limit'
-import { getPlatformSettings } from '@/lib/server/platform-settings'
 
 function makeAuthFetch() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -68,13 +67,8 @@ export async function POST(request: Request) {
   )
 
   // Validate role
-  const settings = await getPlatformSettings()
   const validRoles = ['mature_student', 'school_student']
   const finalRole = validRoles.includes(role) ? role : 'mature_student'
-
-  if (finalRole === 'mature_student' && !settings.ALLOW_MATURE_STUDENTS) {
-    return NextResponse.json({ error: 'Direct registration is currently disabled. Please use an invite code from your teacher.' }, { status: 403 })
-  }
 
   // If school_student, validate invite code and find teacher
   let teacherId: string | null = null

@@ -35,7 +35,6 @@ import { apiError } from '@/lib/server/api-response';
 import { createLogger } from '@/lib/logger';
 import { resolveModelFromHeaders } from '@/lib/server/resolve-model';
 import { generateShortTitle } from '@/lib/server/classroom-utils';
-import { getPlatformSettings } from '@/lib/server/platform-settings';
 const log = createLogger('Outlines Stream');
 
 export const maxDuration = 300;
@@ -231,11 +230,8 @@ export async function POST(req: NextRequest) {
       ? CANONICAL_DIRECTIVES[requirements.language]
       : undefined;
 
-    const settings = await getPlatformSettings();
-    const sceneLimitInstruction = `**IMPORTANT: Generate AT MOST ${settings.MAX_SCENES} scenes.**`;
-
     const prompts = buildPrompt(PROMPT_IDS.REQUIREMENTS_TO_OUTLINES, {
-      requirement: `${requirementWithLang}\n\n${sceneLimitInstruction}`,
+      requirement: requirementWithLang,
       pdfContent: pdfText ? pdfText.substring(0, MAX_PDF_CONTENT_CHARS) : 'None',
       availableImages: availableImagesText,
       researchContext: researchContext || 'None',
