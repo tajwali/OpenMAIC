@@ -19,6 +19,7 @@ interface Student {
 interface Course {
   id: string
   title: string
+  short_title: string | null
   topic: string
   status: string
   created_at: string
@@ -457,53 +458,59 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
               </div>
             ) : (
               <div className="space-y-2">
-                {courses.map(c => (
-                  <div key={c.id} className="bg-card border border-border rounded-xl p-4 flex items-center justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <p className="font-medium text-foreground truncate">{c.title}</p>
+                {courses.map(c => {
+                  const displayTitle = (c.short_title || c.title || '').slice(0, 60)
+                  return (
+                    <div key={c.id} className="bg-card border border-border rounded-xl p-4 flex items-center justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p className="font-medium text-foreground truncate">{displayTitle}</p>
+                          <span
+                            className="shrink-0 px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground font-mono hover:bg-muted/80 transition-colors cursor-pointer"
+                            title="Click to copy full ID"
+                            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.id); }}
+                          >
+                            #{c.id.slice(-6)}
+                          </span>
+                        </div>
+                        {c.short_title && c.title !== c.short_title && (
+                          <p className="text-[11px] text-muted-foreground line-clamp-1 mb-1" title={c.title}>
+                            {c.title}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(c.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </p>
+                          {c.grade && (
+                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                              {c.grade}
+                            </span>
+                          )}
+                          {c.subject_name && (
+                            <span className="text-xs text-muted-foreground">
+                              {c.subject_icon} {c.subject_name}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
                         <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(c.id)
-                          }}
-                          className="shrink-0 px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground font-mono hover:bg-muted/80 transition-colors cursor-pointer"
-                          title="Click to copy full ID"
+                          onClick={() => router.push(`/classroom/${c.id}`)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted transition-colors text-muted-foreground"
                         >
-                          #{c.id.slice(-6)}
+                          Open
+                        </button>
+                        <button
+                          onClick={() => openAssignModal(c)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+                        >
+                          Assign
                         </button>
                       </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(c.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                        </p>
-                        {c.grade && (
-                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
-                            {c.grade}
-                          </span>
-                        )}
-                        {c.subject_name && (
-                          <span className="text-xs text-muted-foreground">
-                            {c.subject_icon} {c.subject_name}
-                          </span>
-                        )}
-                      </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => router.push(`/classroom/${c.id}`)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted transition-colors text-muted-foreground"
-                      >
-                        Open
-                      </button>
-                      <button
-                        onClick={() => openAssignModal(c)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
-                      >
-                        Assign
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -537,15 +544,13 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
                         <td className="px-4 py-3 text-foreground truncate max-w-[200px]">
                           <div className="flex items-center gap-2">
                             <span className="truncate">{a.classroom_title}</span>
-                            <button
-                              onClick={() => {
-                                navigator.clipboard.writeText(a.classroom_id)
-                              }}
+                            <span
                               className="shrink-0 px-1 py-0.5 rounded bg-muted text-[10px] text-muted-foreground font-mono hover:bg-muted/80 transition-colors cursor-pointer"
                               title="Click to copy full ID"
+                              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(a.classroom_id); }}
                             >
                               #{a.classroom_id.slice(-6)}
-                            </button>
+                            </span>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">{a.student_name}</td>

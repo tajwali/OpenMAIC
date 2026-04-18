@@ -7,6 +7,7 @@ import { BookOpen, BarChart2, Trophy, LogOut, FileText, CheckCircle, UserCircle 
 interface AssignedClassroom {
   id: string
   title: string
+  short_title: string | null
   topic: string
   status: string
   assigned_at: string
@@ -195,30 +196,47 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {classrooms.map(c => (
-                <button
-                  key={c.id}
-                  onClick={() => router.push(`/classroom/${c.id}`)}
-                  className="text-left bg-card border border-border rounded-xl p-5 hover:border-primary/50 hover:shadow-md transition-all group"
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium">
-                        assigned
+              {classrooms.map(c => {
+                const displayTitle = (c.short_title || c.title || '').slice(0, 60)
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => router.push(`/classroom/${c.id}`)}
+                    className="text-left bg-card border border-border rounded-xl p-5 hover:border-primary/50 hover:shadow-md transition-all group"
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium">
+                          assigned
+                        </span>
+                        {c.completed && (
+                          <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(c.assigned_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                       </span>
-                      {c.completed && (
-                        <CheckCircle className="w-3.5 h-3.5 text-green-500" />
-                      )}
                     </div>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(c.assigned_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                    </span>
-                  </div>
-                  <p className="font-medium text-sm text-foreground group-hover:text-primary transition-colors line-clamp-3">
-                    {c.title}
-                  </p>
-                </button>
-              ))}
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="font-medium text-sm text-foreground group-hover:text-primary transition-colors line-clamp-2">
+                        {displayTitle}
+                      </p>
+                      <span
+                        className="shrink-0 px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground font-mono hover:bg-muted/80 transition-colors cursor-pointer"
+                        title="Click to copy full ID"
+                        onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.id); }}
+                      >
+                        #{c.id.slice(-6)}
+                      </span>
+                    </div>
+                    {c.short_title && c.title !== c.short_title && (
+                      <p className="text-[11px] text-muted-foreground line-clamp-1" title={c.title}>
+                        {c.title}
+                      </p>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           )}
         </section>

@@ -511,6 +511,13 @@ function CourseCard({ classroom, onClick, onDelete }: { classroom: Classroom; on
                 <CheckCircle className="w-3.5 h-3.5" />
               </span>
             )}
+            <span
+              className="shrink-0 px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground font-mono hover:bg-muted/80 transition-colors cursor-pointer"
+              title="Click to copy full ID"
+              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(classroom.id); }}
+            >
+              #{classroom.id.slice(-6)}
+            </span>
           </div>
           <span className="text-xs text-muted-foreground">{date}</span>
         </div>
