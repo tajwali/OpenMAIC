@@ -598,9 +598,8 @@ function HomePage() {
                 onChange={(e) => updateForm('grade', e.target.value as FormState['grade'])}
                 className="text-xs rounded-lg border border-border bg-background px-2.5 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 cursor-pointer"
               >
-                <option value="none">No grade</option>
-                <option value="all">All Grades</option>
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((g) => (
+                <option value="none">All Grades</option>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((g) => (
                   <option key={g} value={`Grade ${g}`}>Grade {g}</option>
                 ))}
               </select>

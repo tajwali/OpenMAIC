@@ -117,13 +117,15 @@ export async function PATCH(req: NextRequest) {
     }
 
     // Profile field updates
-    const profileUpdates: Record<string, string> = {}
+    const profileUpdates: Record<string, any> = {}
     if (body.display_name !== undefined) {
       const name = body.display_name.trim()
       if (!name) return NextResponse.json({ error: 'display_name cannot be empty' }, { status: 400 })
       profileUpdates.display_name = name
     }
-    if (body.grade !== undefined) profileUpdates.grade = body.grade
+    if (body.grade !== undefined) {
+      profileUpdates.grade = body.grade ? parseInt(String(body.grade)) || null : null
+    }
 
     if (Object.keys(profileUpdates).length > 0) {
       const { error } = await admin

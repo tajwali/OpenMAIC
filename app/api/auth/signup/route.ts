@@ -98,14 +98,23 @@ export async function POST(request: Request) {
 
   if (data.user) {
     const admin = getSupabaseAdmin()
-    await admin.from('user_profiles').insert({
+    const profileData: any = {
       id: data.user.id,
       display_name: displayName ?? '',
       role: finalRole,
       ...(teacherId ? { teacher_id: teacherId } : {}),
-      ...(finalRole === 'school_student' && grade?.trim() ? { grade: grade.trim() } : {}),
-      ...(finalRole === 'school_student' && school?.trim() ? { school: school.trim() } : {}),
-    })
+    }
+
+    if (finalRole === 'school_student') {
+      if (grade) {
+        profileData.grade = parseInt(String(grade)) || null
+      }
+      if (school?.trim()) {
+        profileData.school = school.trim()
+      }
+    }
+
+    await admin.from('user_profiles').insert(profileData)
   }
 
   return NextResponse.json({ success: true, user: data.user })

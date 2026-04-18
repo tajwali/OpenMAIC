@@ -12,7 +12,17 @@ export async function GET() {
     }
 
     const admin = getSupabaseAdmin()
-    const { data, error } = await admin
+
+    // Get student's grade first
+    const { data: profile } = await admin
+      .from('user_profiles')
+      .select('grade')
+      .eq('id', user.id)
+      .single()
+
+    const studentGrade = profile?.grade ? parseInt(String(profile.grade)) : null
+
+    let query = admin
       .from('course_assignments')
       .select(`
         classroom_id,
@@ -23,25 +33,39 @@ export async function GET() {
           title,
           short_title,
           topic,
-          status
+          status,
+          grade
         )
       `)
       .eq('assigned_to', user.id)
-      .order('assigned_at', { ascending: false })
+
+    if (studentGrade) {
+      // If student has a grade, only show courses for that grade OR courses with no grade (null)
+      // Note: we filter in JS below for simpler join logic if nested filtering is tricky in PostgREST
+    }
+
+    const { data, error } = await query.order('assigned_at', { ascending: false })
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    const result = (data ?? []).map((row: any) => ({
-      id: row.classrooms?.id ?? row.classroom_id,
-      title: row.classrooms?.title ?? '',
-      short_title: row.classrooms?.short_title ?? null,
-      topic: row.classrooms?.topic ?? '',
-      status: row.classrooms?.status ?? '',
-      assigned_at: row.assigned_at,
-      assigned_by: row.assigned_by,
-    }))
+    const result = (data ?? [])
+      .filter((row: any) => {
+        if (!studentGrade) return true
+        const classroomGrade = row.classrooms?.grade
+        return !classroomGrade || classroomGrade === studentGrade
+      })
+      .map((row: any) => ({
+        id: row.classrooms?.id ?? row.classroom_id,
+        title: row.classrooms?.title ?? '',
+        short_title: row.classrooms?.short_title ?? null,
+        topic: row.classrooms?.topic ?? '',
+        status: row.classrooms?.status ?? '',
+        assigned_at: row.assigned_at,
+        assigned_by: row.assigned_by,
+        grade: row.classrooms?.grade ?? null,
+      }))
 
     return NextResponse.json(result)
   } catch (err) {

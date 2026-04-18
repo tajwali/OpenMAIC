@@ -12,6 +12,7 @@ interface AssignedClassroom {
   status: string
   assigned_at: string
   completed?: boolean
+  grade: number | null
 }
 
 interface Stats {
@@ -68,6 +69,7 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
   const [quizHistory, setQuizHistory] = useState<QuizResult[]>([])
   const [exams, setExams] = useState<Exam[]>([])
   const [loading, setLoading] = useState(true)
+  const [studentGrade, setStudentGrade] = useState<number | null>(null)
   const [showProfile, setShowProfile] = useState(false)
   const [profileName, setProfileName] = useState('')
   const [profilePassword, setProfilePassword] = useState('')
@@ -83,7 +85,8 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
       fetch('/api/user/quiz-results').then(safeJson).catch(() => null),
       fetch('/api/exams').then(safeJson).catch(() => null),
       fetch('/api/user/course-progress').then(safeJson).catch(() => null),
-    ]).then(([courses, userStats, quizzes, examList, progressList]) => {
+      fetch('/api/user/profile').then(safeJson).catch(() => null),
+    ]).then(([courses, userStats, quizzes, examList, progressList, profile]) => {
       const progressMap = new Map<string, boolean>()
       if (Array.isArray(progressList)) {
         for (const p of progressList as CourseProgress[]) {
@@ -95,6 +98,7 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
       setStats((userStats as Stats | null) ?? { totalCourses: 0, assignedCourses: 0, quizzesTaken: 0, avgScore: null, coursesCompleted: 0 })
       setQuizHistory(Array.isArray(quizzes) ? (quizzes as QuizResult[]).slice(0, 5) : [])
       setExams(Array.isArray(examList) ? (examList as Exam[]) : [])
+      if (profile?.grade) setStudentGrade(parseInt(profile.grade))
     }).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
@@ -148,7 +152,14 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
       <header className="border-b border-border bg-card">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-foreground">OpenMAIC</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold text-foreground">OpenMAIC</h1>
+              {studentGrade && (
+                <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-wider">
+                  Grade {studentGrade}
+                </span>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground">{displayName ?? userEmail ?? 'My Dashboard'}</p>
           </div>
           <div className="flex items-center gap-1">
@@ -209,6 +220,11 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
                         <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium">
                           assigned
                         </span>
+                        {c.grade && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-medium">
+                            G{c.grade}
+                          </span>
+                        )}
                         {c.completed && (
                           <CheckCircle className="w-3.5 h-3.5 text-green-500" />
                         )}
