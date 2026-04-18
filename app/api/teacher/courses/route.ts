@@ -21,7 +21,7 @@ export async function GET() {
 
     const { data, error } = await admin
       .from('classrooms')
-      .select('id, title, topic, status, created_at, grade, subject_id, subjects(name, icon)')
+      .select('id, title, short_title, topic, status, created_at, grade, subject_id, subjects(name, icon)')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
 
@@ -32,6 +32,7 @@ export async function GET() {
       return {
         id: c.id,
         title: c.title,
+        short_title: c.short_title ?? null,
         topic: c.topic,
         status: c.status,
         created_at: c.created_at,

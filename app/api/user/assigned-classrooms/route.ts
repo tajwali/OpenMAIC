@@ -21,6 +21,7 @@ export async function GET() {
         classrooms (
           id,
           title,
+          short_title,
           topic,
           status
         )
@@ -35,6 +36,7 @@ export async function GET() {
     const result = (data ?? []).map((row: any) => ({
       id: row.classrooms?.id ?? row.classroom_id,
       title: row.classrooms?.title ?? '',
+      short_title: row.classrooms?.short_title ?? null,
       topic: row.classrooms?.topic ?? '',
       status: row.classrooms?.status ?? '',
       assigned_at: row.assigned_at,
