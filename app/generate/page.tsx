@@ -705,11 +705,11 @@ function HomePage() {
               
               {classrooms.length > 0 && subjects.length > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Filter:</span>
+                  <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Filter:</span>
                   <select
                     value={selectedSubjectId}
                     onChange={e => setSelectedSubjectId(e.target.value)}
-                    className="border border-border rounded-lg px-2.5 py-1 text-[11px] bg-background focus:outline-none focus:ring-1 focus:ring-primary/40 cursor-pointer"
+                    className="border rounded-lg px-3 py-2 text-sm bg-background cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/40"
                   >
                     <option value="all">All Subjects</option>
                     {subjects.map(s => (

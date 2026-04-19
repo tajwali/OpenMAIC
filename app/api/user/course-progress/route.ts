@@ -111,18 +111,32 @@ async function evaluateCompletion(userId: string, classroomId: string, admin: an
   if (!classroom) return false;
   
   const scenes = (classroom.scenes as any[]) || [];
-  if (scenes.length === 0) return false;
+  const totalScenes = scenes.length;
+  if (totalScenes === 0) return false;
 
+  // Count quiz scenes in classroom.scenes where scene.content.type === 'quiz'
   const quizScenes = scenes.filter(s => s.type === 'quiz' || s.content?.type === 'quiz');
+  const totalQuizzes = quizScenes.length;
   
-  if (quizScenes.length > 0) {
-    const { data: results } = await admin.from('quiz_results').select('scene_id').eq('user_id', userId).eq('classroom_id', classroomId);
+  if (totalQuizzes > 0) {
+    // Count completed quizzes from quiz_results for this user and classroom
+    const { data: results } = await admin.from('quiz_results')
+      .select('scene_id')
+      .eq('user_id', userId)
+      .eq('classroom_id', classroomId);
+    
     const completedQuizIds = new Set((results || []).map((r: any) => r.scene_id));
+    // Only set completed = true if completedQuizzes >= totalQuizzes && totalQuizzes > 0
     return quizScenes.every(s => completedQuizIds.has(s.id));
   } else {
-    const { data: progress } = await admin.from('course_progress').select('scenes_completed').eq('user_id', userId).eq('classroom_id', classroomId).single();
+    // If course has no quizzes -> completed when all scenes viewed (scenes_completed.length >= totalScenes)
+    const { data: progress } = await admin.from('course_progress')
+      .select('scenes_completed')
+      .eq('user_id', userId)
+      .eq('classroom_id', classroomId)
+      .single();
+    
     const viewed = (progress?.scenes_completed as string[]) || [];
-    // Every scene in classroom.scenes should be in viewed array
-    return scenes.every(s => viewed.includes(s.id));
+    return viewed.length >= totalScenes;
   }
 }
