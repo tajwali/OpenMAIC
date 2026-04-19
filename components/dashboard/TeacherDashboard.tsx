@@ -51,7 +51,25 @@ interface StudentProgress {
   recentQuizzes: { classroom_title: string; score: number; total: number; percentage: number; taken_at: string }[]
 }
 
-type Tab = 'students' | 'courses' | 'assignments' | 'exam-results'
+interface TeacherStats {
+  totalStudents: number
+  totalCourses: number
+  totalAssignments: number
+  avgQuizScore: number
+  studentProgress: {
+    id: string
+    name: string
+    grade: string | null
+    coursesAssigned: number
+    coursesCompleted: number
+    lastQuizScore: number | null
+    lastActive: string | null
+  }[]
+  popularSubjects: { name: string; icon: string; courseCount: number }[]
+  recentActivity: { type: string; student: string; course_title: string; score: number; date: string }[]
+}
+
+type Tab = 'students' | 'courses' | 'assignments' | 'exam-results' | 'analytics'
 
 interface ExamResultRow {
   student_name: string
@@ -94,6 +112,7 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
   const [examResultsLoading, setExamResultsLoading] = useState(false)
   const [expandedExams, setExpandedExams] = useState<Set<string>>(new Set())
   const [unassigningId, setUnassigningId] = useState<string | null>(null)
+  const [teacherStats, setTeacherStats] = useState<TeacherStats | null>(null)
   // Student edit modal
   const [editingStudent, setEditingStudent] = useState<Student | null>(null)
   const [editStudentName, setEditStudentName] = useState('')
@@ -111,12 +130,14 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
       fetch('/api/teacher/courses').then(safeJson).catch(() => null),
       fetch('/api/teacher/assign-course').then(safeJson).catch(() => null),
       fetch('/api/subjects').then(safeJson).catch(() => null),
-    ]).then(([ic, studs, crses, asns, subs]) => {
+      fetch('/api/teacher/stats').then(safeJson).catch(() => null),
+    ]).then(([ic, studs, crses, asns, subs, stats]) => {
       setInviteCode((ic as { invite_code?: string } | null)?.invite_code ?? null)
       setStudents(Array.isArray(studs) ? (studs as Student[]) : [])
       setCourses(Array.isArray(crses) ? (crses as Course[]) : [])
       setAssignments(Array.isArray(asns) ? (asns as Assignment[]) : [])
       setSubjects(Array.isArray(subs) ? (subs as Subject[]) : [])
+      setTeacherStats(stats as TeacherStats | null)
     }).catch(() => {
       // Never let a fetch failure crash the dashboard
     }).finally(() => setLoading(false))
@@ -281,6 +302,7 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
             { id: 'courses', label: 'My Courses', icon: <BookOpen className="w-4 h-4" /> },
             { id: 'assignments', label: 'Assignments', icon: <ClipboardList className="w-4 h-4" /> },
             { id: 'exam-results', label: 'Exam Results', icon: <BarChart2 className="w-4 h-4" /> },
+            { id: 'analytics', label: 'Analytics', icon: <BarChart2 className="w-4 h-4" /> },
           ] as { id: Tab; label: string; icon: React.ReactNode }[]).map(t => (
             <button
               key={t.id}
@@ -644,6 +666,158 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
                   )
                 })}
               </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Tab: Analytics ── */}
+        {tab === 'analytics' && (
+          <div className="space-y-6">
+            <h2 className="text-lg font-semibold">Student Analytics</h2>
+            
+            {loading || !teacherStats ? (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[1, 2, 3, 4].map(i => <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />)}
+                </div>
+                <div className="h-64 rounded-xl bg-muted animate-pulse" />
+              </div>
+            ) : (
+              <>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Total Students</p>
+                    <p className="text-3xl font-black text-foreground">{teacherStats.totalStudents}</p>
+                  </div>
+                  <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Total Courses</p>
+                    <p className="text-3xl font-black text-foreground">{teacherStats.totalCourses}</p>
+                  </div>
+                  <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Assignments</p>
+                    <p className="text-3xl font-black text-foreground">{teacherStats.totalAssignments}</p>
+                  </div>
+                  <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Avg Quiz Score</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-3xl font-black text-foreground">{teacherStats.avgQuizScore}%</p>
+                      <ScoreBadge pct={teacherStats.avgQuizScore} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Student Progress Table */}
+                  <div className="lg:col-span-2 bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+                    <div className="px-5 py-4 border-b border-border bg-muted/10">
+                      <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Student Progress</h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-muted/30 border-b border-border text-[10px] uppercase tracking-widest text-muted-foreground">
+                            <th className="text-left px-5 py-2.5 font-medium">Student</th>
+                            <th className="text-center px-4 py-2.5 font-medium">Grade</th>
+                            <th className="text-center px-4 py-2.5 font-medium">Assigned</th>
+                            <th className="text-center px-4 py-2.5 font-medium">Completed</th>
+                            <th className="text-center px-4 py-2.5 font-medium">Last Quiz</th>
+                            <th className="text-right px-5 py-2.5 font-medium">Active</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {teacherStats.studentProgress.map(s => (
+                            <tr key={s.id} className="hover:bg-muted/10 transition-colors">
+                              <td className="px-5 py-3 font-medium text-foreground">{s.name}</td>
+                              <td className="px-4 py-3 text-center text-muted-foreground">{s.grade || '—'}</td>
+                              <td className="px-4 py-3 text-center text-muted-foreground">{s.coursesAssigned}</td>
+                              <td className="px-4 py-3 text-center text-muted-foreground">{s.coursesCompleted}</td>
+                              <td className="px-4 py-3 text-center">
+                                {s.lastQuizScore !== null ? <ScoreBadge pct={s.lastQuizScore} /> : <span className="text-muted-foreground text-xs">—</span>}
+                              </td>
+                              <td className="px-5 py-3 text-right text-[10px] text-muted-foreground whitespace-nowrap">
+                                {s.lastActive ? new Date(s.lastActive).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Popular Subjects */}
+                  <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+                    <div className="px-5 py-4 border-b border-border bg-muted/10">
+                      <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Popular Subjects</h3>
+                    </div>
+                    <div className="p-0">
+                      {teacherStats.popularSubjects.length === 0 ? (
+                        <p className="p-8 text-center text-sm text-muted-foreground italic">No course data yet</p>
+                      ) : (
+                        <table className="w-full text-sm">
+                          <tbody className="divide-y divide-border">
+                            {teacherStats.popularSubjects.map((s, i) => (
+                              <tr key={i} className="hover:bg-muted/10 transition-colors">
+                                <td className="px-5 py-3 flex items-center gap-3">
+                                  <span className="text-lg">{s.icon}</span>
+                                  <span className="font-medium">{s.name}</span>
+                                </td>
+                                <td className="px-5 py-3 text-right font-bold text-muted-foreground">
+                                  {s.courseCount} courses
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recent Activity */}
+                <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+                  <div className="px-5 py-4 border-b border-border bg-muted/10">
+                    <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Recent Activity</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted/30 border-b border-border text-[10px] uppercase tracking-widest text-muted-foreground">
+                          <th className="text-left px-5 py-2 font-medium">Student</th>
+                          <th className="text-left px-5 py-2 font-medium">Activity</th>
+                          <th className="text-left px-5 py-2 font-medium">Course</th>
+                          <th className="text-center px-5 py-2 font-medium">Result</th>
+                          <th className="text-right px-5 py-2 font-medium">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {teacherStats.recentActivity.map((act, i) => (
+                          <tr key={i} className="hover:bg-muted/10 transition-colors">
+                            <td className="px-5 py-3 font-medium text-foreground">{act.student}</td>
+                            <td className="px-5 py-3 text-muted-foreground uppercase text-[10px] font-bold tracking-wider">
+                              {act.type}
+                            </td>
+                            <td className="px-5 py-3 text-muted-foreground truncate max-w-[200px]" title={act.course_title}>
+                              {act.course_title}
+                            </td>
+                            <td className="px-5 py-3 text-center">
+                              <ScoreBadge pct={act.score} />
+                            </td>
+                            <td className="px-5 py-3 text-right text-xs text-muted-foreground whitespace-nowrap">
+                              {new Date(act.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                          </tr>
+                        ))}
+                        {teacherStats.recentActivity.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="px-5 py-8 text-center text-muted-foreground italic">No recent activity</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
             )}
           </div>
         )}
