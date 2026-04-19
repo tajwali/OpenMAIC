@@ -41,72 +41,42 @@ This fork is designed for high availability and production stability, hosted on 
 
 ---
 
-## ✨ New Features (Multi-User Fork)
+## ✨ Features (v2.0 Multi-User System)
 
-Since diverging from the original repo, the following features have been implemented:
+OpenMAIC 2.0 transforms the platform from a session-based tool into a complete Learning Management System (LMS):
 
-### 👤 Multi-User & Auth
-- **Supabase Authentication:** Secure login and signup flow.
-- **Role-Based Access Control (RBAC):**
-  - `admin`: Full system management, user role control, and teacher account creation.
-  - `teacher`: Course management, student assignments, and invite code generation.
-  - `mature_student`: Standard student with full access to their own progress.
-  - `school_student`: Managed student accounts linked to a specific teacher.
-- **Profile Management:** Edit display names, gender, and passwords.
+- **Full Auth System:** Supabase integration for secure login/signup.
+- **Role-Based Dashboards:** Specialized views for Admin, Teacher, and Students.
+- **Course Persistence:** All generated content is saved scene-by-scene to a persistent database.
+- **Teacher-Student Linking:** Invite code system to manage student groups.
+- **Assignments & Exams:** Distribute courses to students and generate timed assessments.
+- **Deep Analytics:** Track student progress, scores, and engagement.
+- **AI Classification:** Automatic subject, grade, and title generation for all courses.
 
-### 📚 Course Persistence
-- **Database Storage:** All generated courses are saved to Supabase.
-- **Incremental Saves:** Courses are saved scene-by-scene during generation to prevent data loss on timeouts.
-- **Metadata Enhancement:** Automatic AI-driven subject classification, grade level assignment, and course title generation.
+## 📚 Documentation
 
-### 👩‍🏫 Teacher & Admin Tools
-- **Teacher Dashboard:** 
-  - Manage students and view their progress.
-  - Assign/unassign courses to specific students.
-  - Generate and manage invite codes for student onboarding.
-- **Exam System:** Generate timed AI exams from course content and track student results.
-- **Admin Dashboard:** View all users, modify roles, and manage accounts via the GoTrue Admin API.
+For detailed information, please refer to our documentation files:
+
+- **[Deployment Guide](docs/DEPLOYMENT.md)** — Installation, environment variables, and self-hosting instructions.
+- **[Administrator Manual](docs/ADMIN-MANUAL.md)** — Managing users, subjects, and platform statistics.
+- **[Teacher Manual](docs/TEACHER-MANUAL.md)** — Managing students, generating courses, and assignments.
+- **[Student Manual](docs/STUDENT-MANUAL.md)** — Getting started and using the AI classroom.
+- **[API Documentation](docs/API.md)** — Endpoint reference and role-based access control.
 
 ---
 
-## 🚀 Deployment
+## 🚀 Quick Start
 
-### Production Build
-The project uses Next.js standalone mode to minimize the production footprint.
-
-```bash
-# Build the application
-pnpm build
-
-# CRITICAL: Copy environment variables to the standalone folder
-cp .env.local .next/standalone/.env.local
-
-# The deployment script automates this process
-/opt/deploy-prod.sh
-```
-
-### Environment Variables
-The following variables are required for the multi-user system:
-
-```env
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=       # Port 8000 (Kong)
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_KEY=           # For admin operations
-SUPABASE_AUTH_URL=              # Port 9999 (GoTrue direct)
-
-# AI Providers
-OPENAI_API_KEY=
-ANTHROPIC_API_KEY=
-GOOGLE_API_KEY=
-# ... other provider keys
-```
+1. **Install Dependencies:** `pnpm install`
+2. **Configure Environment:** Copy `.env.example` to `.env.local` and add your API keys.
+3. **Database Setup:** Apply the migrations in `supabase/migrations/` to your PostgreSQL database.
+4. **Run Development:** `pnpm dev`
+5. **Production Build:** `pnpm build && systemctl restart openmaic`
 
 ---
 
 ## 🛠️ Known Issues & Roadmap
 
-- **Unassign Courses:** UI/API for unassigning courses is currently in progress (Phase 12).
 - **524 Timeouts:** Cloudflare may return a 524 timeout on extremely long course generations (>10 scenes). Incremental saves mitigate data loss.
 - **TTS Stability:** Text-to-speech occasionally fails due to upstream API rate limits or proxy issues.
 - **Auth Cookies:** Cloudflare tunnels occasionally interfere with cookie-based auth for server-side reads; use `getUser()` pattern where possible.

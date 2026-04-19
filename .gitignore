@@ -70,6 +70,7 @@ next-env.d.ts
 /logs
 
 # docs
-/docs
+# Documentation is now tracked in v2.0
+# /docs
 .claude/
 tests/generation/*.eval.result.md
