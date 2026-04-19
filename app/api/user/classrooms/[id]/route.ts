@@ -26,13 +26,26 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { scenes } = await req.json() as { scenes: unknown[] };
+    const { scenes, subjectId, grade } = await req.json() as { 
+      scenes?: unknown[], 
+      subjectId?: string | null,
+      grade?: string | number | null 
+    };
+
+    const updateData: any = {};
+    if (scenes !== undefined) updateData.scenes = scenes;
+    if (subjectId !== undefined) updateData.subject_id = subjectId;
+    if (grade !== undefined) updateData.grade = grade;
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ success: true });
+    }
 
     const admin = getSupabaseAdmin();
     // Silent UPDATE — no error surfaced if row doesn't exist yet
     await admin
       .from('classrooms')
-      .update({ scenes })
+      .update(updateData)
       .eq('id', id)
       .eq('user_id', session.user.id);
 

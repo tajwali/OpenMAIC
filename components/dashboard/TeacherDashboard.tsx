@@ -145,6 +145,19 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
 
   useEffect(() => { loadAll() }, [loadAll])
 
+  const updateCourseSubject = async (courseId: string, subjectId: string) => {
+    try {
+      const res = await fetch(`/api/user/classrooms/${courseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subjectId: subjectId === 'none' ? null : subjectId }),
+      })
+      if (res.ok) {
+        loadAll()
+      }
+    } catch { /* ignore */ }
+  }
+
   const unassignCourse = async (assignment: Assignment) => {
     setUnassigningId(assignment.id)
     try {
@@ -437,31 +450,18 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
 
             {/* Subject Filter Bar */}
             {!loading && courses.length > 0 && subjects.length > 0 && (
-              <div className="flex items-center gap-2 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide">
-                <button
-                  onClick={() => setSelectedSubjectId('all')}
-                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                    selectedSubjectId === 'all'
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                  }`}
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Filter by:</span>
+                <select
+                  value={selectedSubjectId}
+                  onChange={e => setSelectedSubjectId(e.target.value)}
+                  className="border border-border rounded-lg px-3 py-1.5 text-xs bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
                 >
-                  All Subjects
-                </button>
-                {subjects.map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => setSelectedSubjectId(s.id)}
-                    className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1.5 transition-all ${
-                      selectedSubjectId === s.id
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                    }`}
-                  >
-                    <span>{s.icon}</span>
-                    <span>{s.name}</span>
-                  </button>
-                ))}
+                  <option value="all">All Subjects</option>
+                  {subjects.map(s => (
+                    <option key={s.id} value={s.id}>{s.icon} {s.name}</option>
+                  ))}
+                </select>
               </div>
             )}
 
@@ -505,12 +505,16 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
                                 G{c.grade}
                               </span>
                             )}
-                            {c.subject_name && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 font-bold flex items-center gap-1">
-                                <span>{c.subject_icon}</span>
-                                <span>{c.subject_name}</span>
-                              </span>
-                            )}
+                            <select
+                              value={c.subject_id || 'none'}
+                              onChange={(e) => updateCourseSubject(c.id, e.target.value)}
+                              className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 font-bold border-0 cursor-pointer focus:ring-1 focus:ring-purple-400/50 appearance-none hover:bg-purple-200 dark:hover:bg-purple-800/40 transition-colors"
+                            >
+                              <option value="none">No Subject</option>
+                              {subjects.map(s => (
+                                <option key={s.id} value={s.id}>{s.icon} {s.name}</option>
+                              ))}
+                            </select>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">

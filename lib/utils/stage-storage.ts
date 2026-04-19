@@ -29,6 +29,7 @@ export interface StageListItem {
   createdAt: number;
   updatedAt: number;
   grade?: number | null;
+  subjectId?: string | null;
 }
 
 /**

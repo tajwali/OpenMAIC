@@ -23,7 +23,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = await requireRole(['admin', 'teacher'])
+    const auth = await requireRole(['admin', 'teacher', 'mature_student'])
     if ('error' in auth) return auth.error
 
     const body = await req.json() as { name?: string; icon?: string; description?: string }

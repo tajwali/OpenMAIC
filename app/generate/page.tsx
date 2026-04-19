@@ -141,6 +141,7 @@ function HomePage() {
   const [classrooms, setClassrooms] = useState<StageListItem[]>([]);
   const [thumbnails, setThumbnails] = useState<Record<string, Slide>>({});
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all');
   const toolbarRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -167,6 +168,7 @@ function HomePage() {
           title: string;
           created_at: string;
           grade: number | null;
+          subject_id: string | null;
         }[];
         // Map DB courses to StageListItem format for ClassroomCard compatibility
         const ts = dbCourses.map((c) => new Date(c.created_at).getTime());
@@ -177,6 +179,7 @@ function HomePage() {
           createdAt: ts[i],
           updatedAt: ts[i],
           grade: c.grade,
+          subjectId: c.subject_id,
         }));
 
         setClassrooms(list);
@@ -691,33 +694,47 @@ function HomePage() {
           transition={{ delay: 0.5 }}
           className="relative z-10 mt-10 w-full max-w-6xl flex flex-col items-center"
         >
-          {/* Trigger — divider-line with centered text */}
-          <button
-            onClick={() => {
-              const next = !recentOpen;
-              setRecentOpen(next);
-              try {
-                localStorage.setItem(RECENT_OPEN_STORAGE_KEY, String(next));
-              } catch {
-                /* ignore */
-              }
-            }}
-            className="group w-full flex items-center gap-4 py-2 cursor-pointer"
-          >
-            <div className="flex-1 h-px bg-border/40 group-hover:bg-border/70 transition-colors" />
-            <span className="shrink-0 flex items-center gap-2 text-[13px] text-muted-foreground/60 group-hover:text-foreground/70 transition-colors select-none">
-              <Clock className="size-3.5" />
-              {t('classroom.recentClassrooms')}
-              <span className="text-[11px] tabular-nums opacity-60">{classrooms.length}</span>
+          <div className="w-full flex items-center justify-between mb-8">
+            <div className="flex-1 h-px bg-border/40" />
+            <div className="shrink-0 flex flex-wrap items-center gap-4 px-4">
+              <span className="flex items-center gap-2 text-[13px] text-muted-foreground/60 select-none">
+                <Clock className="size-3.5" />
+                {t('classroom.recentClassrooms')}
+                <span className="text-[11px] tabular-nums opacity-60">{classrooms.length}</span>
+              </span>
+              
+              {classrooms.length > 0 && subjects.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Filter:</span>
+                  <select
+                    value={selectedSubjectId}
+                    onChange={e => setSelectedSubjectId(e.target.value)}
+                    className="border border-border rounded-lg px-2.5 py-1 text-[11px] bg-background focus:outline-none focus:ring-1 focus:ring-primary/40 cursor-pointer"
+                  >
+                    <option value="all">All Subjects</option>
+                    {subjects.map(s => (
+                      <option key={s.id} value={s.id}>{s.icon} {s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <motion.div
                 animate={{ rotate: recentOpen ? 180 : 0 }}
                 transition={{ duration: 0.3, ease: 'easeInOut' }}
+                className="cursor-pointer"
               >
-                <ChevronDown className="size-3.5" />
+                <ChevronDown className="size-3.5" onClick={() => {
+                  const next = !recentOpen;
+                  setRecentOpen(next);
+                  try {
+                    localStorage.setItem(RECENT_OPEN_STORAGE_KEY, String(next));
+                  } catch { /* ignore */ }
+                }} />
               </motion.div>
-            </span>
-            <div className="flex-1 h-px bg-border/40 group-hover:bg-border/70 transition-colors" />
-          </button>
+            </div>
+            <div className="flex-1 h-px bg-border/40" />
+          </div>
 
           {/* Expandable content */}
           <AnimatePresence>
@@ -729,8 +746,10 @@ function HomePage() {
                 transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
                 className="w-full overflow-hidden"
               >
-                <div className="pt-8 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-8">
-                  {classrooms.map((classroom, i) => (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-8">
+                  {classrooms
+                    .filter(c => selectedSubjectId === 'all' || c.subjectId === selectedSubjectId)
+                    .map((classroom, i) => (
                     <motion.div
                       key={classroom.id}
                       initial={{ opacity: 0, y: 16 }}
@@ -754,6 +773,11 @@ function HomePage() {
                     </motion.div>
                   ))}
                 </div>
+                {classrooms.filter(c => selectedSubjectId === 'all' || c.subjectId === selectedSubjectId).length === 0 && (
+                   <div className="text-center py-12 border border-dashed border-border rounded-xl bg-muted/20">
+                     <p className="text-muted-foreground text-sm">No courses found for this subject.</p>
+                   </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

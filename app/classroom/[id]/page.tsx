@@ -143,29 +143,24 @@ export default function ClassroomDetailPage() {
     };
   }, [classroomId, loadClassroom, stop]);
 
-  // Track course completion when user reaches the last scene
+  const currentSceneId = useStageStore((s) => s.currentSceneId);
+
+  // Track course completion and progress when user reaches scenes
   useEffect(() => {
-    if (loading || error) return;
+    if (loading || error || !currentSceneId) return;
 
-    const checkCompletion = () => {
-      if (completionFiredRef.current) return;
-      const { scenes, currentSceneId } = useStageStore.getState();
-      if (!currentSceneId || scenes.length === 0) return;
-      const lastScene = scenes[scenes.length - 1];
-      if (lastScene && currentSceneId === lastScene.id) {
-        completionFiredRef.current = true;
-        fetch('/api/user/course-progress', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ classroom_id: classroomId, completed: true, last_scene_id: currentSceneId }),
-        }).catch(() => {});
-      }
-    };
+    // Record scene viewed and update last_scene_id
+    fetch('/api/user/course-progress', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        classroom_id: classroomId, 
+        last_scene_id: currentSceneId,
+        scene_viewed: currentSceneId
+      }),
+    }).catch(() => {});
 
-    const unsub = useStageStore.subscribe(() => checkCompletion());
-    checkCompletion();
-    return unsub;
-  }, [loading, error, classroomId]);
+  }, [loading, error, classroomId, currentSceneId]);
 
   // Auto-resume generation for pending outlines
   useEffect(() => {

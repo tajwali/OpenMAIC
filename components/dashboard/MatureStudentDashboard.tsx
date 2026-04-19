@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { BookOpen, Plus, Trophy, BarChart2, LogOut, FileText, CheckCircle, Trash2, UserCircle } from 'lucide-react'
+import { BookOpen, Plus, Trophy, BarChart2, LogOut, FileText, CheckCircle, Trash2, UserCircle, X } from 'lucide-react'
 
 interface Classroom {
   id: string
@@ -82,6 +82,10 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
   const [quizHistory, setQuizHistory] = useState<QuizResult[]>([])
   const [exams, setExams] = useState<Exam[]>([])
   const [loading, setLoading] = useState(true)
+  const [addingSubject, setAddingSubject] = useState(false)
+  const [newSubName, setNewSubName] = useState('')
+  const [newSubIcon, setNewSubIcon] = useState('📚')
+  const [subSaving, setSubSaving] = useState(false)
 
   const loadAll = useCallback(() => {
     const safeJson = (r: Response) => r.ok ? r.json().catch(() => null) : Promise.resolve(null)
@@ -109,6 +113,38 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
+
+  const updateCourseSubject = async (courseId: string, subjectId: string) => {
+    try {
+      const res = await fetch(`/api/user/classrooms/${courseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subjectId: subjectId === 'none' ? null : subjectId }),
+      })
+      if (res.ok) {
+        loadAll()
+      }
+    } catch { /* ignore */ }
+  }
+
+  const handleAddSubject = async () => {
+    if (!newSubName.trim()) return
+    setSubSaving(true)
+    try {
+      const res = await fetch('/api/subjects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newSubName, icon: newSubIcon }),
+      })
+      if (res.ok) {
+        setAddingSubject(false)
+        setNewSubName('')
+        loadAll()
+      }
+    } finally {
+      setSubSaving(false)
+    }
+  }
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -202,31 +238,25 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
             
             {/* Subject Filter Bar */}
             {!loading && classrooms.length > 0 && subjects.length > 0 && (
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
-                <button
-                  onClick={() => setSelectedSubjectId('all')}
-                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                    selectedSubjectId === 'all'
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                  }`}
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider text-nowrap">Filter by:</span>
+                <select
+                  value={selectedSubjectId}
+                  onChange={e => setSelectedSubjectId(e.target.value)}
+                  className="border border-border rounded-lg px-3 py-1.5 text-xs bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
                 >
-                  All
+                  <option value="all">All Subjects</option>
+                  {subjects.map(s => (
+                    <option key={s.id} value={s.id}>{s.icon} {s.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => setAddingSubject(true)}
+                  className="shrink-0 p-1.5 rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-primary transition-colors"
+                  title="Add custom subject"
+                >
+                  <Plus className="w-4 h-4" />
                 </button>
-                {subjects.map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => setSelectedSubjectId(s.id)}
-                    className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1.5 transition-all ${
-                      selectedSubjectId === s.id
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                    }`}
-                  >
-                    <span>{s.icon}</span>
-                    <span>{s.name}</span>
-                  </button>
-                ))}
               </div>
             )}
           </div>
@@ -267,6 +297,8 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
                       <CourseCard
                         key={c.id}
                         classroom={c}
+                        subjects={subjects}
+                        onUpdateSubject={updateCourseSubject}
                         onClick={() => router.push(`/classroom/${c.id}`)}
                         onDelete={() => handleDeleteCourse(c.id)}
                       />
@@ -360,6 +392,62 @@ export default function MatureStudentDashboard({ userEmail, displayName }: Props
         </section>
       </main>
 
+      {/* ── Add Subject Modal ── */}
+      {addingSubject && (
+        <Modal onClose={() => setAddingSubject(false)} title="Add Custom Subject">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5 uppercase tracking-wider">Subject Name</label>
+              <input
+                type="text"
+                value={newSubName}
+                onChange={e => setNewSubName(e.target.value)}
+                placeholder="e.g. Astrophysics, Digital Art"
+                className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5 uppercase tracking-wider">Select Icon</label>
+              <div className="grid grid-cols-6 gap-2">
+                {['📚', '🔬', '💻', '🎨', '🏥', '⚖️', '🌍', '🛠️', '🧬', '🧠', '🎹', '🏀'].map(icon => (
+                  <button
+                    key={icon}
+                    onClick={() => setNewSubIcon(icon)}
+                    className={`text-xl p-2 rounded-lg border transition-all ${newSubIcon === icon ? 'bg-primary/10 border-primary ring-1 ring-primary' : 'border-border hover:bg-muted'}`}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button
+              onClick={handleAddSubject}
+              disabled={subSaving || !newSubName.trim()}
+              className="w-full py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-all shadow-md shadow-primary/20"
+            >
+              {subSaving ? 'Adding...' : 'Add Subject'}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+function Modal({ children, onClose, title }: { children: React.ReactNode; onClose: () => void; title: string }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-sm max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h3 className="font-semibold text-foreground">{title}</h3>
+          <button onClick={onClose} className="p-1 rounded hover:bg-muted text-muted-foreground transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-5">
+          {children}
+        </div>
+      </div>
     </div>
   )
 }
@@ -454,11 +542,17 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
   )
 }
 
-function CourseCard({ classroom, onClick, onDelete }: { classroom: Classroom; onClick: () => void; onDelete: () => void }) {
+function CourseCard({ classroom, subjects, onUpdateSubject, onClick, onDelete }: { 
+  classroom: Classroom; 
+  subjects: Subject[];
+  onUpdateSubject: (id: string, subId: string) => void;
+  onClick: () => void; 
+  onDelete: () => void 
+}) {
   const date = new Date(classroom.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
   const displayTitle = (classroom.short_title ?? classroom.title ?? '').slice(0, 60)
   return (
-    <div className="relative group bg-card border border-border rounded-xl p-5 hover:border-primary/50 hover:shadow-md transition-all">
+    <div className="relative group bg-card border border-border rounded-xl p-5 hover:border-primary/50 hover:shadow-md transition-all flex flex-col h-full">
       <button
         onClick={(e) => { e.stopPropagation(); onDelete() }}
         className="absolute top-3 right-3 p-1.5 rounded-lg text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
@@ -466,7 +560,7 @@ function CourseCard({ classroom, onClick, onDelete }: { classroom: Classroom; on
       >
         <Trash2 className="w-3.5 h-3.5" />
       </button>
-      <button onClick={onClick} className="w-full text-left">
+      <div onClick={onClick} className="flex-1 cursor-pointer">
         <div className="flex items-start justify-between mb-2 pr-6">
           <div className="flex items-center gap-2">
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-bold uppercase tracking-wider">
@@ -475,17 +569,6 @@ function CourseCard({ classroom, onClick, onDelete }: { classroom: Classroom; on
             {classroom.grade && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-bold">
                 G{classroom.grade}
-              </span>
-            )}
-            {classroom.subject_name && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 font-bold flex items-center gap-1">
-                <span>{classroom.subject_icon}</span>
-                <span>{classroom.subject_name}</span>
-              </span>
-            )}
-            {classroom.completed && (
-              <span title="Completed" className="text-green-500">
-                <CheckCircle className="w-3.5 h-3.5" />
               </span>
             )}
           </div>
@@ -506,7 +589,34 @@ function CourseCard({ classroom, onClick, onDelete }: { classroom: Classroom; on
         {classroom.short_title && classroom.title !== classroom.short_title && (
           <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{classroom.title}</p>
         )}
-      </button>
+      </div>
+
+      <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {classroom.completed && (
+            <span title="Completed" className="text-green-500">
+              <CheckCircle className="w-3.5 h-3.5" />
+            </span>
+          )}
+          <select
+            value={classroom.subject_id || 'none'}
+            onChange={(e) => onUpdateSubject(classroom.id, e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            className="text-[10px] px-2 py-1 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 font-bold border-0 cursor-pointer focus:ring-1 focus:ring-purple-400/50 appearance-none hover:bg-purple-200 dark:hover:bg-purple-800/40 transition-colors"
+          >
+            <option value="none">No Subject</option>
+            {subjects.map(s => (
+              <option key={s.id} value={s.id}>{s.icon} {s.name}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          onClick={onClick}
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          Open →
+        </button>
+      </div>
     </div>
   )
 }
