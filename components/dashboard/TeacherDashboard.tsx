@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Users, BookOpen, ClipboardList, LogOut, Copy, Check, RefreshCw, X, ChevronRight, FileText, BarChart2, ChevronDown, UserCircle, Pencil } from 'lucide-react'
+import { Users, BookOpen, ClipboardList, LogOut, Copy, Check, RefreshCw, X, ChevronRight, FileText, BarChart2, ChevronDown, UserCircle, Pencil, Trash2 } from 'lucide-react'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -112,6 +112,8 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
   const [examResultsLoading, setExamResultsLoading] = useState(false)
   const [expandedExams, setExpandedExams] = useState<Set<string>>(new Set())
   const [unassigningId, setUnassigningId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteConfirmCourse, setDeleteConfirmCourse] = useState<Course | null>(null)
   const [teacherStats, setTeacherStats] = useState<TeacherStats | null>(null)
   // Student edit modal
   const [editingStudent, setEditingStudent] = useState<Student | null>(null)
@@ -171,6 +173,22 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
       }
     } finally {
       setUnassigningId(null)
+    }
+  }
+
+  const deleteCourse = async (course: Course) => {
+    setDeletingId(course.id)
+    try {
+      const res = await fetch(`/api/user/classrooms?id=${course.id}`, {
+        method: 'DELETE',
+      })
+      if (res.ok) {
+        setCourses(prev => prev.filter(c => c.id !== course.id))
+        setDeleteConfirmCourse(null)
+        loadAll() // Refresh everything to update stats/assignments
+      }
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -518,6 +536,13 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            onClick={() => setDeleteConfirmCourse(c)}
+                            className="p-1.5 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                            title="Delete course"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => router.push(`/classroom/${c.id}`)}
                             className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted transition-colors text-muted-foreground"
@@ -966,6 +991,37 @@ export default function TeacherDashboard({ userEmail, displayName }: Props) {
                 </button>
               </>
             )}
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Delete Course Confirmation Modal ── */}
+      {deleteConfirmCourse && (
+        <Modal onClose={() => setDeleteConfirmCourse(null)} title="Delete Course">
+          <div className="space-y-4">
+            <div className="p-4 bg-destructive/10 text-destructive rounded-xl border border-destructive/20">
+              <p className="text-sm font-medium">
+                Are you sure you want to delete <strong>&quot;{deleteConfirmCourse.title}&quot;</strong>?
+              </p>
+              <p className="text-xs mt-2 opacity-90 leading-relaxed">
+                This action is permanent. It will also remove all student assignments and quiz results for this course.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirmCourse(null)}
+                className="flex-1 py-2 bg-muted text-muted-foreground rounded-lg text-sm font-medium hover:bg-muted/80 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteCourse(deleteConfirmCourse)}
+                disabled={deletingId === deleteConfirmCourse.id}
+                className="flex-1 py-2 bg-destructive text-destructive-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+              >
+                {deletingId === deleteConfirmCourse.id ? 'Deleting…' : 'Yes, Delete'}
+              </button>
+            </div>
           </div>
         </Modal>
       )}

@@ -3,6 +3,9 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/server/supabase-admin';
 import { generateCourseTitle, classifySubject } from '@/lib/server/classroom-utils';
 import { createLogger } from '@/lib/logger';
+import { CLASSROOMS_DIR } from '@/lib/server/classroom-storage';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 const log = createLogger('ClassroomsAPI');
 
@@ -173,6 +176,19 @@ export async function DELETE(req: NextRequest) {
 
     const { error } = await admin.from('classrooms').delete().eq('id', id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Cleanup files
+    try {
+      const jsonPath = path.join(CLASSROOMS_DIR, `${id}.json`);
+      const mediaDir = path.join(CLASSROOMS_DIR, id);
+      
+      await fs.rm(jsonPath, { force: true });
+      await fs.rm(mediaDir, { recursive: true, force: true });
+    } catch (cleanupErr) {
+      log.error('Cleanup failed during course deletion', { id, error: cleanupErr });
+      // We don't return error here because DB record is already gone,
+      // and we want the UI to reflect the successful primary action.
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {
