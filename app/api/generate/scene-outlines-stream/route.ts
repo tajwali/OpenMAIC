@@ -148,8 +148,12 @@ export async function POST(req: NextRequest) {
 
     // Build user profile string for language inference context
     const userProfileText =
-      requirements.userNickname || requirements.userBio
-        ? `## Student Profile\n\nStudent: ${requirements.userNickname || 'Unknown'}${requirements.userBio ? ` — ${requirements.userBio}` : ''}\n\nConsider this student's background when designing the course. Adapt difficulty, examples, and teaching approach accordingly.\n\n---`
+      requirements.userNickname || requirements.userBio || requirements.grade
+        ? `## Student Profile\n\nStudent: ${requirements.userNickname || 'Unknown'}${
+            requirements.userBio ? ` — ${requirements.userBio}` : ''
+          }${
+            requirements.grade ? `\nGrade Level: ${requirements.grade}` : ''
+          }\n\nConsider this student's background and grade level when designing the course. Adapt difficulty, examples, and teaching approach accordingly.\n\n---`
         : '';
 
     // Detect vision capability

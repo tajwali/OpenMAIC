@@ -28,6 +28,7 @@ export interface StageListItem {
   sceneCount: number;
   createdAt: number;
   updatedAt: number;
+  grade?: number | null;
 }
 
 /**

@@ -474,7 +474,7 @@ function CourseCard({ classroom, onClick, onDelete }: { classroom: Classroom; on
             </span>
             {classroom.grade && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-bold">
-                {classroom.grade}
+                G{classroom.grade}
               </span>
             )}
             {classroom.subject_name && (

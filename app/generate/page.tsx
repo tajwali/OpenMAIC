@@ -162,16 +162,23 @@ function HomePage() {
       // Load from DB API
       const res = await fetch('/api/user/classrooms');
       if (res.ok) {
-        const dbCourses = await res.json() as { id: string; title: string; created_at: string }[];
+        const dbCourses = (await res.json()) as {
+          id: string;
+          title: string;
+          created_at: string;
+          grade: number | null;
+        }[];
         // Map DB courses to StageListItem format for ClassroomCard compatibility
-        const ts = dbCourses.map(c => new Date(c.created_at).getTime());
+        const ts = dbCourses.map((c) => new Date(c.created_at).getTime());
         const list: StageListItem[] = dbCourses.map((c, i) => ({
           id: c.id,
           name: c.title,
           sceneCount: 0,
           createdAt: ts[i],
           updatedAt: ts[i],
+          grade: c.grade,
         }));
+
         setClassrooms(list);
         // Also load local thumbnails for any courses that exist in IndexedDB
         if (list.length > 0) {
@@ -1165,10 +1172,15 @@ function ClassroomCard({
       </div>
 
       {/* Info — outside the thumbnail */}
-      <div className="mt-2.5 px-1 flex items-center gap-2">
+      <div className="mt-2.5 px-1 flex flex-wrap items-center gap-2">
         <span className="shrink-0 inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-400">
           {classroom.sceneCount} {t('classroom.slides')} · {formatDate(classroom.updatedAt)}
         </span>
+        {classroom.grade && (
+          <span className="shrink-0 px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-bold">
+            G{classroom.grade}
+          </span>
+        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <p className="font-medium text-[15px] truncate text-foreground/90 min-w-0">

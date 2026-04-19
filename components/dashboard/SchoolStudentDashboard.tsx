@@ -224,7 +224,7 @@ export default function SchoolStudentDashboard({ userEmail, displayName }: Props
                             assigned
                           </span>
                           {c.grade && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold">
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-bold">
                               G{c.grade}
                             </span>
                           )}
