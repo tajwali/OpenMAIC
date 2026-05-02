@@ -1094,6 +1094,38 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
         outputWindow: 4096,
         capabilities: { streaming: true, tools: false, vision: false },
       },
+      {
+        id: 'bjoernb/gemma4-26b-fast',
+        name: 'Gemma 4 26B Fast',
+        contextWindow: 131072,
+        outputWindow: 8192,
+        capabilities: {
+          streaming: true,
+          tools: true,
+          vision: true,
+          thinking: {
+            toggleable: true,
+            defaultEnabled: false,
+            budgetAdjustable: false,
+          },
+        },
+      },
+      {
+        id: 'bjoernb/gemma4-26b-fast:latest',
+        name: 'Gemma 4 26B Fast (latest)',
+        contextWindow: 131072,
+        outputWindow: 8192,
+        capabilities: {
+          streaming: true,
+          tools: true,
+          vision: true,
+          thinking: {
+            toggleable: true,
+            defaultEnabled: false,
+            budgetAdjustable: false,
+          },
+        },
+      },
     ],
   },
 };

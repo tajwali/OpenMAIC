@@ -116,11 +116,33 @@ export async function POST(request: NextRequest) {
 
         startKeepAlive();
 
-        const result = await generateImage({ providerId, apiKey, baseUrl, model: clientModel }, body);
+        let result;
+        let lastError;
+        const maxRetries = 3;
+        const retryDelayMs = 5000;
+
+        for (let i = 0; i <= maxRetries; i++) {
+          try {
+            result = await generateImage({ providerId, apiKey, baseUrl, model: clientModel }, body);
+            break;
+          } catch (error) {
+            lastError = error;
+            const message = error instanceof Error ? error.message : String(error);
+            const isRetryable = message.includes('503') || message.includes('429') || message.includes('high demand') || message.includes('overloaded');
+            
+            if (i < maxRetries && isRetryable) {
+              log.warn(`Image generation failed (${i + 1}/${maxRetries + 1}), retrying in ${retryDelayMs}ms: ${message}`);
+              await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+              continue;
+            }
+            throw error;
+          }
+        }
+        if (result) log.info(`Image generation success: ${providerId}, result type=${result.base64 ? "base64" : result.url ? "url" : "none"}`);
 
         stopKeepAlive();
 
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ success: true, result })}\n\n`));
+        if (result) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ success: true, result })}\n\n`));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         // Detect content safety filter rejections (e.g. Seedream OutputImageSensitiveContentDetected)

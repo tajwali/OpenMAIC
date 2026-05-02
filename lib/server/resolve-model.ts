@@ -12,7 +12,7 @@ import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
 import type { ProviderId } from '@/lib/types/provider';
 
 export interface ResolvedModel extends ModelWithInfo {
-  /** Original model string (e.g. "google:gemini-2.0-flash") */
+  /** Original model string (e.g. "google:gemini-1.5-flash-latest") */
   modelString: string;
   /** Resolved provider ID */
   providerId: ProviderId;
@@ -29,7 +29,7 @@ export interface ResolvedModel extends ModelWithInfo {
 // ---------------------------------------------------------------------------
 const MODEL_FALLBACK_CHAIN: string[] = [
   process.env.DEFAULT_MODEL,
-  'google:gemini-2.0-flash',
+  'google:gemini-1.5-flash-latest',
   'google:gemini-1.5-flash',
 ].filter((s): s is string => typeof s === 'string' && s.length > 0);
 

@@ -45,9 +45,10 @@ export default function ClassroomDetailPage() {
           if (res.ok) {
             const json = await res.json();
             if (json.success && json.classroom) {
-              const { stage, scenes } = json.classroom;
+              const { stage, scenes, outlines } = json.classroom;
               useStageStore.getState().setStage(stage);
               useStageStore.setState({
+                outlines: outlines || [],
                 scenes,
                 currentSceneId: scenes[0]?.id ?? null,
               });

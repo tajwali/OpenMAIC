@@ -1,7 +1,7 @@
 import { after, type NextRequest } from 'next/server';
 import { nanoid } from 'nanoid';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
-import { type GenerateClassroomInput } from '@/lib/server/classroom-generation';
+import { type GenerateClassroomInput, type ModelParams } from '@/lib/server/classroom-generation';
 import { runClassroomGenerationJob } from '@/lib/server/classroom-job-runner';
 import { createClassroomGenerationJob } from '@/lib/server/classroom-job-store';
 import { buildRequestOrigin } from '@/lib/server/classroom-storage';
@@ -14,7 +14,15 @@ export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
   try {
-    const rawBody = (await req.json()) as Partial<GenerateClassroomInput>;
+    const text = await req.text();
+    const rawBody = (text ? JSON.parse(text) : {}) as Partial<GenerateClassroomInput>;
+    
+    const modelParams: ModelParams = {
+      modelString: req.headers.get('x-model') || undefined,
+      apiKey: req.headers.get('x-api-key') || undefined,
+      baseUrl: req.headers.get('x-base-url') || undefined,
+      providerType: req.headers.get('x-provider-type') || undefined,
+    };
     const body: GenerateClassroomInput = {
       requirement: rawBody.requirement || '',
       ...(rawBody.pdfContent ? { pdfContent: rawBody.pdfContent } : {}),
@@ -77,7 +85,7 @@ export async function POST(req: NextRequest) {
     const job = await createClassroomGenerationJob(jobId, body);
     const pollUrl = `${baseUrl}/api/generate-classroom/${jobId}`;
 
-    after(() => runClassroomGenerationJob(jobId, body, baseUrl, userId));
+    after(() => runClassroomGenerationJob(jobId, body, baseUrl, userId, modelParams));
 
     return apiSuccess(
       {

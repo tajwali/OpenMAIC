@@ -57,16 +57,16 @@ export const IMAGE_PROVIDERS: Record<ImageProviderId, ImageProviderConfig> = {
     defaultBaseUrl: 'https://generativelanguage.googleapis.com',
     models: [
       {
+        id: 'gemini-2.5-flash-image',
+        name: 'Gemini 2.5 Flash Image (Nano Banana)',
+      },
+      {
         id: 'gemini-3.1-flash-image-preview',
         name: 'Gemini 3.1 Flash Image (Nano Banana 2)',
       },
       {
         id: 'gemini-3-pro-image-preview',
         name: 'Gemini 3 Pro Image (Nano Banana Pro)',
-      },
-      {
-        id: 'gemini-2.5-flash-image',
-        name: 'Gemini 2.5 Flash Image (Nano Banana)',
       },
     ],
     supportedAspectRatios: ['16:9', '4:3', '1:1'],

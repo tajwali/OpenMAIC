@@ -16,7 +16,7 @@ import { getSupabaseAdmin } from '@/lib/server/supabase-admin';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { stage, scenes } = body;
+    const { stage, scenes, outlines } = body;
 
     if (!stage || !scenes) {
       return apiError(
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     const id = stage.id || randomUUID();
     const baseUrl = buildRequestOrigin(request);
 
-    const persisted = await persistClassroom({ id, stage: { ...stage, id }, scenes }, baseUrl);
+    const persisted = await persistClassroom({ id, stage: { ...stage, id }, scenes, outlines }, baseUrl);
 
     return apiSuccess({ id: persisted.id, url: persisted.url }, 201);
   } catch (error) {
@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
     const admin = getSupabaseAdmin();
     const { data: row, error: dbError } = await admin
       .from('classrooms')
-      .select('id, title, short_title, created_at, scenes')
+      .select('id, title, short_title, created_at, scenes, outlines')
       .eq('id', id)
       .single();
 
@@ -97,6 +97,7 @@ export async function GET(request: NextRequest) {
         agentIds: [],
       },
       scenes: row.scenes as unknown[],
+      outlines: (row.outlines as unknown[]) || [],
       createdAt: row.created_at as string,
     };
 

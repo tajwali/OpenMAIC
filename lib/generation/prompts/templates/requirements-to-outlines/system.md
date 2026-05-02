@@ -335,3 +335,4 @@ Output a JSON **object** (not a bare array) with this structure:
 8. **Language**: Infer from the user's requirement text and context. Output all scene content in the inferred language.
 9. Regardless of information completeness, always output conforming JSON - do not ask questions or request more information
 10. **No teacher identity on slides**: Scene titles and keyPoints must be neutral and topic-focused. Never include the teacher's name or role (e.g., avoid "Teacher Wang's Tips", "Teacher's Wishes"). Use generic labels like "Tips", "Summary", "Key Takeaways" instead.
+11. **No thinking blocks**: Do NOT include any reasoning or thinking blocks (like <think>...</think>) in the output

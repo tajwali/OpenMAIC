@@ -147,9 +147,11 @@ async function generateSingleMedia(
 
     if (abortSignal?.aborted) return;
 
-    // If resultUrl is empty, it means we have a non-fatal failure
+    // If resultUrl is empty, it means we have a non-fatal failure (e.g. timeout or rejected prompt)
     if (!resultUrl) {
-      log.warn(`[MediaOrchestrator] Empty result URL for ${req.elementId} - skipping`);
+      log.warn(`[MediaOrchestrator] Empty result URL for ${req.elementId} - marking as done without image`);
+      // Mark as done with empty URL so skeleton disappears and UI shows fallback/nothing instead of error
+      useMediaGenerationStore.getState().markDone(req.elementId, '');
       return;
     }
 
@@ -289,7 +291,7 @@ async function callImageApi(
         style: req.style,
       }),
       signal: abortSignal,
-      timeoutMs: 60000, // 60s timeout for image generation
+      timeoutMs: 120000, // 120s timeout for image generation
     });
 
     if (!data.success) {

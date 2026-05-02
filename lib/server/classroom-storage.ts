@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import type { NextRequest } from 'next/server';
 import type { Scene, Stage } from '@/lib/types/stage';
+import type { SceneOutline } from '@/lib/types/generation';
 
 export const CLASSROOMS_DIR = path.join(process.cwd(), 'data', 'classrooms');
 export const CLASSROOM_JOBS_DIR = path.join(process.cwd(), 'data', 'classroom-jobs');
@@ -38,6 +39,7 @@ export interface PersistedClassroomData {
   id: string;
   stage: Stage;
   scenes: Scene[];
+  outlines?: SceneOutline[];
   createdAt: string;
 }
 
@@ -63,6 +65,7 @@ export async function persistClassroom(
     id: string;
     stage: Stage;
     scenes: Scene[];
+    outlines?: SceneOutline[];
   },
   baseUrl: string,
 ): Promise<PersistedClassroomData & { url: string }> {
@@ -70,6 +73,7 @@ export async function persistClassroom(
     id: data.id,
     stage: data.stage,
     scenes: data.scenes,
+    outlines: data.outlines,
     createdAt: new Date().toISOString(),
   };
 

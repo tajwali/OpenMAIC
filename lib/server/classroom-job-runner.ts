@@ -1,5 +1,5 @@
 import { createLogger } from '@/lib/logger';
-import { generateClassroom, type GenerateClassroomInput } from '@/lib/server/classroom-generation';
+import { generateClassroom, type GenerateClassroomInput, type ModelParams } from '@/lib/server/classroom-generation';
 import {
   markClassroomGenerationJobFailed,
   markClassroomGenerationJobRunning,
@@ -64,6 +64,7 @@ export function runClassroomGenerationJob(
   input: GenerateClassroomInput,
   baseUrl: string,
   userId?: string,
+  modelParams?: ModelParams,
 ): Promise<void> {
   const existing = runningJobs.get(jobId);
   if (existing) {
@@ -75,6 +76,7 @@ export function runClassroomGenerationJob(
       await markClassroomGenerationJobRunning(jobId);
 
       const result = await generateClassroom(input, {
+        modelParams,
         baseUrl,
         onProgress: async (progress) => {
           await updateClassroomGenerationJobProgress(jobId, progress);

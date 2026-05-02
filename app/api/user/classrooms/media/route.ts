@@ -1,3 +1,5 @@
+import { createLogger } from "@/lib/logger";
+const log = createLogger("MediaUpload");
 /**
  * POST /api/user/classrooms/media
  *
@@ -36,6 +38,7 @@ const ALLOWED_MIME = new Set([
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 
 export async function POST(req: NextRequest) {
+  log.debug("Received media upload request");
   const supabase = await createClient();
   const {
     data: { user },
@@ -96,6 +99,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'File too large (max 50 MB)' }, { status: 413 });
   }
 
+  log.debug(`Saving media to disk: ${classroomId}/${subdir}/${sanitised}`);
   // Write to disk
   const dir = path.join(CLASSROOMS_DIR, classroomId, subdir);
   await fs.mkdir(dir, { recursive: true });
