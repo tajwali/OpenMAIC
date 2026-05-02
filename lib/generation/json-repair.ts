@@ -28,6 +28,7 @@ export function parseJsonResponse<T>(response: string): T | null {
   });
 
   // 3. Fix colon inside key names (e.g. "view:Box" -> "viewBox")
+  cleanedResponse = cleanedResponse.replace(/"view":\s*"Box"":/g, '"viewBox":');
   cleanedResponse = cleanedResponse.replace(/"(\w+):(\w+)"(?=\s*:)/g, '"$1$2"');
 
   // 4. Fix aspect ratio and similar nested colon patterns: "aspectRatio": "16": 9 -> "aspectRatio": "16:9"

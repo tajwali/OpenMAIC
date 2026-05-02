@@ -44,6 +44,10 @@ export async function GET(
   }
 
   const filePath = path.join(CLASSROOMS_DIR, classroomId, ...pathSegments);
+  console.log(`[MediaServer] GET ${classroomId}/${pathSegments.join('/')}`);
+  console.log(`[MediaServer] process.cwd(): ${process.cwd()}`);
+  console.log(`[MediaServer] CLASSROOMS_DIR: ${CLASSROOMS_DIR}`);
+  console.log(`[MediaServer] Constructed filePath: ${filePath}`);
 
   try {
     // Resolve symlinks and verify the real path stays within the classroom dir
